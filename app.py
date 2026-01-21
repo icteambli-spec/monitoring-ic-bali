@@ -79,26 +79,23 @@ def proses_dan_tampilkan_data(url, current_user, is_admin=False):
 
         if is_admin:
             st.info("💡 Mode Admin: Menampilkan Seluruh Data")
-            # Format angka di dataframe admin agar mudah dibaca
             df_admin_display = df.copy()
             for col in df_admin_display.select_dtypes(include=['number']).columns:
                 df_admin_display[col] = df_admin_display[col].apply(format_angka_indo)
-            st.dataframe(df_admin_display, use_container_width=True)
+            # Menghilangkan index untuk tampilan Admin
+            st.dataframe(df_admin_display, use_container_width=True, hide_index=True)
         else:
-            # Filter Data User
             user_df = df[df['User'].astype(str).str.lower() == current_user.lower()].copy()
 
             if not user_df.empty:
                 st.subheader(f"👋 Ringkasan Saldo: {current_user}")
                 
-                # Identifikasi kolom angka
                 for col in user_df.columns:
                     if col != 'User':
                         user_df[col] = pd.to_numeric(user_df[col], errors='ignore')
 
                 numeric_cols = user_df.select_dtypes(include=['number']).columns
                 
-                # 1. Tampilkan Metric (Kotak) dengan pemisah titik
                 if not numeric_cols.empty:
                     cols_ui = st.columns(len(numeric_cols))
                     for i, col_name in enumerate(numeric_cols):
@@ -108,14 +105,15 @@ def proses_dan_tampilkan_data(url, current_user, is_admin=False):
                 
                 st.divider()
                 
-                # 2. Tampilkan Tabel Detail dengan pemisah titik
-                # Kita buat copy untuk display agar tidak merusak data asli
+                # MEMPERCANTIK TABEL RINCIAN
                 df_display = user_df.copy()
                 for col in numeric_cols:
                     df_display[col] = df_display[col].apply(format_angka_indo)
                 
                 st.write("**Rincian Data:**")
-                st.table(df_display)
+                
+                # GUNAKAN st.dataframe DENGAN hide_index=True
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
             else:
                 st.warning(f"Data untuk '{current_user}' belum tersedia.")
 
