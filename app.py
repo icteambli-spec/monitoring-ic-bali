@@ -99,7 +99,7 @@ def proses_dan_tampilkan_data(url, current_user, is_admin=False):
             user_df = df[df['User'].astype(str).str.lower() == current_user.lower()].copy()
 
             if not user_df.empty:
-                st.subheader(f"👋 Ringkasan Saldo Area: {current_user}")
+                st.subheader(f"👋 Ringkasan Saldo Area AM/AS: {current_user}")
                 
                 # Identifikasi & Konversi Kolom Angka
                 for col in user_df.columns:
