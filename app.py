@@ -69,14 +69,13 @@ def save_json_cloud(data_dict, public_id):
 def catat_log_akses(username):
     try:
         logs = get_json_cloud(LOG_DB_PATH)
-        # Waktu WITA (UTC+8)
         tgl = (datetime.utcnow() + timedelta(hours=8)).strftime("%Y-%m-%d")
         if tgl not in logs: logs[tgl] = {}
         logs[tgl][username] = logs[tgl].get(username, 0) + 1
         save_json_cloud(logs, LOG_DB_PATH)
     except: pass
 
-# --- 5. LOGIKA DATA USER ---
+# --- 5. LOGIKA DATA USER (AS/AM FILTER) ---
 def proses_tabel_user(url, current_user):
     try:
         resp = requests.get(url)
@@ -89,7 +88,6 @@ def proses_tabel_user(url, current_user):
             st.error(f"Kolom tidak ditemukan: {', '.join(missing)}")
             return
 
-        # Filter AM/AS
         u_lower = current_user.lower()
         mask = (df['AM'].astype(str).str.lower() == u_lower) | (df['AS'].astype(str).str.lower() == u_lower)
         user_df = df[mask].copy()
@@ -140,17 +138,17 @@ def main():
                                 orig = [k for k in db.keys() if k.lower() == u.lower()][0]
                                 if db[orig] == hash_password(p):
                                     st.session_state['auth'], st.session_state['user'] = True, orig
-                                    catat_log_akses(orig) # CATAT LOG SAAT LOGIN
+                                    catat_log_akses(orig)
                                     st.rerun()
                             st.error("Gagal Login")
                 with t2:
                     with st.form("r"):
                         nu, np = st.text_input("Username Baru"), st.text_input("Password Baru", type="password")
-                        if st.form_submit_button("Daftar", use_container_width=True):
+                        if st.form_submit_button("Daftar Akun", use_container_width=True):
                             db = get_json_cloud(USER_DB_PATH)
                             db[nu] = hash_password(np)
                             save_json_cloud(db, USER_DB_PATH)
-                            st.success("Berhasil!")
+                            st.success("Pendaftaran Berhasil!")
         else:
             h1, h2 = st.columns([5, 1])
             h1.subheader(f"User: {st.session_state['user']}")
@@ -173,39 +171,61 @@ def main():
                     if ap == "ic034": st.session_state['admin_auth'] = True; st.rerun()
                     else: st.error("Akses Ditolak")
         else:
-            if st.button("Tutup Admin"): st.session_state['admin_auth'] = False; st.rerun()
+            header_col1, header_col2 = st.columns([5, 1])
+            header_col1.write("### ⚙️ Panel Kontrol Admin")
+            if header_col2.button("Tutup Admin", use_container_width=True): 
+                st.session_state['admin_auth'] = False; st.rerun()
             
             tab_f, tab_u, tab_l = st.tabs(["📂 File Manager", "👥 User Manager", "📈 Log Akses"])
             
             with tab_f:
-                up = st.file_uploader("Upload Excel", type=['xlsx'])
-                if up and st.button("Upload"):
+                up = st.file_uploader("Upload Excel Laporan Baru", type=['xlsx'])
+                if up and st.button("Simpan Laporan"):
                     cloudinary.uploader.upload(up, resource_type="raw", public_id=f"{MONITORING_FOLDER}/{up.name}", overwrite=True)
-                    st.success("Tersimpan!"); time.sleep(1); st.rerun()
+                    st.success("File Tersimpan!"); time.sleep(1); st.rerun()
                 st.divider()
+                st.write("#### Daftar File Aktif")
                 res = cloudinary.api.resources(resource_type="raw", type="upload", prefix=f"{MONITORING_FOLDER}/")
                 for f in res.get('resources', []):
                     fn = f['public_id'].split('/')[-1]
                     ca, cb = st.columns([4, 1])
-                    ca.write(fn)
+                    ca.write(f"📄 {fn}")
                     if cb.button("Hapus", key=f['public_id']):
                         cloudinary.api.delete_resources([f['public_id']], resource_type="raw"); st.rerun()
             
             with tab_u:
                 db_u = get_json_cloud(USER_DB_PATH)
-                st.write(f"Total User: **{len(db_u)}**")
-                for un in list(db_u.keys()):
-                    with st.expander(f"⚙️ Kelola User: {un}"):
-                        new_p = st.text_input(f"Password Baru untuk {un}", type="password", key=f"p_{un}")
-                        c1, c2 = st.columns(2)
-                        if c1.button(f"Update Password {un}"):
-                            if new_p:
-                                db_u[un] = hash_password(new_p)
+                st.write(f"**Total User Terdaftar:** {len(db_u)}")
+                
+                if db_u:
+                    # 1. MODE PENCARIAN & PILIH USER
+                    st.write("---")
+                    user_list = sorted(list(db_u.keys()))
+                    pilih_user = st.selectbox("🎯 Cari & Pilih User yang akan dikelola:", options=user_list, index=None, placeholder="Ketik nama user...")
+                    
+                    if pilih_user:
+                        with st.container(border=True):
+                            st.markdown(f"**Mengelola Akun: `{pilih_user}`**")
+                            col_pass, col_btn = st.columns([2, 1])
+                            new_p = col_pass.text_input("Masukkan Password Baru:", type="password", key="inp_pass")
+                            
+                            st.write("") # Spasi
+                            c1, c2 = st.columns(2)
+                            if c1.button(f"Update Password {pilih_user}", use_container_width=True):
+                                if new_p:
+                                    db_u[pilih_user] = hash_password(new_p)
+                                    save_json_cloud(db_u, USER_DB_PATH)
+                                    st.success(f"Password `{pilih_user}` berhasil diperbarui!")
+                                else: st.warning("Password tidak boleh kosong!")
+                            
+                            if c2.button(f"❌ Hapus Permanen Akun {pilih_user}", type="primary", use_container_width=True):
+                                del db_u[pilih_user]
                                 save_json_cloud(db_u, USER_DB_PATH)
-                                st.success(f"Password {un} diperbarui!")
-                            else: st.warning("Isi password baru!")
-                        if c2.button(f"Hapus Akun {un}", type="primary"):
-                            del db_u[un]; save_json_cloud(db_u, USER_DB_PATH); st.rerun()
+                                st.success(f"Akun `{pilih_user}` telah dihapus.")
+                                time.sleep(1)
+                                st.rerun()
+                else:
+                    st.info("Belum ada user yang terdaftar.")
             
             with tab_l:
                 logs = get_json_cloud(LOG_DB_PATH)
@@ -214,11 +234,11 @@ def main():
                     for tgl, u_data in logs.items():
                         for usr, hits in u_data.items():
                             rekap.append({"Tanggal": tgl, "Username": usr, "Jumlah Akses": hits})
-                    df_log = pd.DataFrame(rekap).sort_values(by="Tanggal", ascending=False)
+                    df_log = pd.DataFrame(rekap).sort_values(by=["Tanggal", "Jumlah Akses"], ascending=[False, False])
                     st.dataframe(df_log, use_container_width=True, hide_index=True)
                     csv = df_log.to_csv(index=False).encode('utf-8')
-                    st.download_button("📥 Download Log (CSV)", csv, "Log_Akses.csv", "text/csv")
-                else: st.info("Belum ada log akses.")
+                    st.download_button("📥 Download Log (CSV)", csv, "Log_Akses_Monitoring.csv", "text/csv")
+                else: st.info("Log akses masih kosong.")
 
 if __name__ == "__main__":
     main()
