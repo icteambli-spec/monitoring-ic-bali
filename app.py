@@ -2,11 +2,15 @@ import streamlit as st
 import pandas as pd
 import cloudinary
 import cloudinary.uploader
+import cloudinary.api
 import io
 import requests
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 
-# 1. Konfigurasi Cloudinary (Ambil dari Secrets)
+# =================================================================
+# 1. KONFIGURASI & CLOUDINARY
+# =================================================================
 try:
     cloudinary.config( 
       cloud_name = st.secrets["cloud_name"], 
@@ -15,78 +19,151 @@ try:
       secure = True
     )
 except:
-    st.error("Konfigurasi Cloudinary tidak ditemukan!")
+    st.error("Konfigurasi Secrets Cloudinary tidak ditemukan!")
 
-st.set_page_config(page_title="Input Penjelasan Pareto NKL", layout="wide")
+st.set_page_config(page_title="Pareto NKL System", layout="wide")
 
-# 2. Fungsi Load & Save
-def load_data_pareto(toko_id, bulan):
-    # Logika: Mencari file hasil di cloud, jika tidak ada ambil dari master
-    # Untuk permulaan, kita buat dummy data berdasarkan kolom di foto
-    p_id = f"pareto_nkl/hasil/Pareto_{toko_id}_{bulan}.xlsx"
+# Database Path
+USER_DB = "pareto_nkl/config/users.json"
+LOG_DB = "pareto_nkl/config/access_logs.json"
+MASTER_PATH = "pareto_nkl/master_pareto.xlsx"
+
+# =================================================================
+# 2. FUNGSI CORE (DATABASE & DATA)
+# =================================================================
+def load_json_db(path):
     try:
-        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}"
-        resp = requests.get(url, timeout=5)
-        if resp.status_code == 200:
-            return pd.read_excel(io.BytesIO(resp.content))
-    except:
-        pass
+        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{path}"
+        resp = requests.get(url, timeout=10)
+        return resp.json() if resp.status_code == 200 else {}
+    except: return {}
+
+def save_json_db(path, db_dict):
+    json_data = json.dumps(db_dict)
+    cloudinary.uploader.upload(io.BytesIO(json_data.encode()), resource_type="raw", public_id=path, overwrite=True, invalidate=True)
+
+def record_log(nik):
+    db_logs = load_json_db(LOG_DB)
+    now = (datetime.utcnow() + timedelta(hours=8)).strftime('%Y-%m-%d %H:%M:%S')
+    if nik not in db_logs: db_logs[nik] = []
+    db_logs[nik].append(now)
+    save_json_db(LOG_DB, db_logs)
+
+@st.cache_data(ttl=60)
+def get_master_data():
+    try:
+        res = cloudinary.api.resource(MASTER_PATH, resource_type="raw")
+        url = res['secure_url']
+        resp = requests.get(url)
+        df = pd.read_excel(io.BytesIO(resp.content))
+        return df
+    except: return None
+
+# =================================================================
+# 3. ROUTING & STATE
+# =================================================================
+if 'page' not in st.session_state: st.session_state.page = "LOGIN"
+if 'user_nik' not in st.session_state: st.session_state.user_nik = ""
+
+# --- HALAMAN LOGIN ---
+if st.session_state.page == "LOGIN":
+    st.header("🔑 Login Sistem Pareto")
+    l_nik = st.text_input("NIK:", max_chars=10)
+    l_pw = st.text_input("Password:", type="password")
     
-    # Jika file belum ada, buat DataFrame kosong dengan struktur sesuai foto
-    return pd.DataFrame([
-        {"TOKO": toko_id, "TANGGAL": "2026-01-08", "PRDCD": "20140865", "DESC": "FD SAY BREAD TA (DC) NUTEL..", "QTY": -19, "RP_JUAL": -342000, "PENJELASAN": ""},
-        {"TOKO": toko_id, "TANGGAL": "2026-01-08", "PRDCD": "20137293", "DESC": "POINT COFFEE KONVERSI OVO..", "QTY": 644, "RP_JUAL": -322000, "PENJELASAN": ""},
-    ])
-
-def save_data_pareto(df, toko_id, bulan):
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine='openpyxl') as w:
-        df.to_excel(w, index=False)
-    p_id = f"pareto_nkl/hasil/Pareto_{toko_id}_{bulan}.xlsx"
-    cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
-
-# 3. Antarmuka (UI) - Sesuai Foto
-st.title("Input Penjelasan Pareto Nkl Toko")
-
-with st.container(border=True):
-    col1, col2, col3 = st.columns([3, 3, 2])
-    with col1:
-        toko_opt = ["TQ86 - fresh gatot subroto timur - de", "TQ87 - contoh toko lain"]
-        selected_toko = st.selectbox("PILIH TOKO", toko_opt)
-    with col2:
-        # Input bulan seperti pada foto
-        selected_bulan = st.date_input("BULAN", value=datetime(2026, 1, 1))
-    with col3:
-        st.write("##") # Spasi
-        btn_view = st.button("🔍 View Data", type="primary", use_container_width=True)
-
-# 4. Tabel Input (Mekanisme Data Editor)
-if btn_view or 'current_df' in st.session_state:
-    toko_code = selected_toko.split(" - ")[0]
-    bulan_str = selected_bulan.strftime("%Y-%m")
+    col1, col2 = st.columns(2)
+    if col1.button("Masuk", type="primary", use_container_width=True):
+        db = load_json_db(USER_DB)
+        if l_nik in db and db[l_nik] == l_pw:
+            st.session_state.user_nik = l_nik
+            record_log(l_nik)
+            st.session_state.page = "USER_INPUT"
+            st.rerun()
+        else: st.error("NIK atau Password Salah!")
     
-    if btn_view:
-        st.session_state.current_df = load_data_pareto(toko_code, bulan_str)
+    if col2.button("🛡️ Admin Panel", use_container_width=True):
+        st.session_state.page = "ADMIN_AUTH"
+        st.rerun()
 
-    st.subheader("Data Pareto Nkl")
+# --- HALAMAN ADMIN AUTH ---
+elif st.session_state.page == "ADMIN_AUTH":
+    st.header("🛡️ Admin Authorization")
+    adm_pw = st.text_input("Admin Password:", type="password")
+    if st.button("Login Admin"):
+        if adm_pw == "icnkl034":
+            st.session_state.page = "ADMIN_PANEL"
+            st.rerun()
+        else: st.error("Akses Ditolak!")
+    if st.button("⬅️ Kembali"): st.session_state.page = "LOGIN"; st.rerun()
+
+# --- HALAMAN ADMIN PANEL ---
+elif st.session_state.page == "ADMIN_PANEL":
+    st.title("🛡️ Dashboard Admin")
+    t1, t2, t3 = st.tabs(["📤 Upload Master", "📊 Log Akses", "🔐 Reset Password"])
+
+    with t1:
+        st.subheader("Update Master Pareto")
+        f_master = st.file_uploader("Upload Excel (Format: TOKO, AM, PRDCD, DESC, QTY, RP JUAL, PENJELASAN)", type=["xlsx"])
+        if f_master and st.button("Publish Master Baru"):
+            cloudinary.uploader.upload(f_master, resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
+            st.success("✅ Master Berhasil Diperbarui!"); st.cache_data.clear()
+
+    with t2:
+        st.subheader("Log Aktivitas User")
+        logs = load_json_db(LOG_DB)
+        if logs:
+            flat_logs = [{"NIK": k, "Waktu Akses": t} for k, v in logs.items() for t in v]
+            st.dataframe(pd.DataFrame(flat_logs).sort_values("Waktu Akses", ascending=False), use_container_width=True)
+
+    with t3:
+        st.subheader("Reset Password User")
+        r_nik = st.text_input("Masukkan NIK:")
+        r_pw = st.text_input("Password Baru:", type="password")
+        if st.button("Simpan Password"):
+            db = load_json_db(USER_DB)
+            db[r_nik] = r_pw
+            save_json_db(USER_DB, db)
+            st.success(f"✅ Password NIK {r_nik} berhasil direset.")
+            
+    if st.button("🚪 Keluar Admin"): st.session_state.page = "LOGIN"; st.rerun()
+
+# --- HALAMAN USER INPUT ---
+elif st.session_state.page == "USER_INPUT":
+    st.title(f"📋 Input Penjelasan Pareto ({st.session_state.user_nik})")
+    df_m = get_master_data()
     
-    # Menggunakan st.data_editor agar user bisa mengisi kolom Penjelasan
-    edited_df = st.data_editor(
-        st.session_state.current_df,
-        column_config={
-            "TOKO": st.column_config.TextColumn("TOKO", disabled=True),
-            "TANGGAL": st.column_config.TextColumn("TANGGAL", disabled=True),
-            "PRDCD": st.column_config.TextColumn("PRDCD", disabled=True),
-            "DESC": st.column_config.TextColumn("DESC", disabled=True),
-            "QTY": st.column_config.NumberColumn("QTY", disabled=True),
-            "RP_JUAL": st.column_config.NumberColumn("RP_JUAL", format="Rp %d", disabled=True),
-            "PENJELASAN": st.column_config.TextColumn("PENJELASAN", help="Isi penjelasan alfa-numerik di sini"),
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="editor_pareto"
-    )
+    if df_m is not None:
+        # Filter Toko dari Master
+        list_toko = sorted(df_m['TOKO'].unique())
+        selected_toko = st.selectbox("PILIH TOKO:", list_toko)
+        
+        # Filter data berdasarkan toko
+        data_toko = df_m[df_m['TOKO'] == selected_toko].copy()
+        
+        st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
+        
+        edited_df = st.data_editor(
+            data_toko,
+            column_config={
+                "PENJELASAN": st.column_config.TextColumn("PENJELASAN (Alfanumerik)", help="Wajib diisi"),
+                "TOKO": None, # Sembunyikan karena sudah difilter
+                "AM": st.column_config.TextColumn("AM", disabled=True),
+                "PRDCD": st.column_config.TextColumn("PRDCD", disabled=True),
+                "DESC": st.column_config.TextColumn("DESC", disabled=True),
+                "QTY": st.column_config.NumberColumn("QTY", disabled=True),
+                "RP JUAL": st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True),
+            },
+            hide_index=True, use_container_width=True
+        )
+        
+        if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
+            # Logika simpan hasil per toko
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf) as w: edited_df.to_excel(w, index=False)
+            p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
+            cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
+            st.success("✅ Data berhasil disimpan ke cloud!")
+    else:
+        st.warning("⚠️ File Master belum diupload oleh Admin.")
 
-    if st.button("💾 Simpan Penjelasan", type="primary"):
-        save_data_pareto(edited_df, toko_code, bulan_str)
-        st.success(f"✅ Penjelasan untuk {toko_code} berhasil disimpan!")
+    if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
