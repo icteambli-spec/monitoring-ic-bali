@@ -67,7 +67,15 @@ if 'user_nik' not in st.session_state: st.session_state.user_nik = ""
 
 # --- HALAMAN LOGIN ---
 if st.session_state.page == "LOGIN":
-    st.header("🔑 Login Sistem Pareto")
+    # Membuat layout kolom agar gambar dan judul sejajar atau gambar di atas
+    # Jika gambar ada di Cloudinary, ganti string di bawah dengan URL gambar Anda
+    
+    st.image("What is Fraud_ Definition and Examples (1).jpg", use_container_width=True)
+    
+    st.title("📊 Pareto NKL System")
+    st.subheader("Monitoring & Input Penjelasan Pareto")
+    
+    # Form Login tetap sama seperti sebelumnya
     l_nik = st.text_input("NIK:", max_chars=10)
     l_pw = st.text_input("Password:", type="password")
     
