@@ -70,7 +70,7 @@ if st.session_state.page == "LOGIN":
     # Membuat layout kolom agar gambar dan judul sejajar atau gambar di atas
     # Jika gambar ada di Cloudinary, ganti string di bawah dengan URL gambar Anda
     
-    st.image("What is Fraud_ Definition and Examples (1).jpg", use_container_width=True)
+    st.image("https://res.cloudinary.com/dydpottpm/image/upload/v1769698444/What_is_Fraud__Definition_and_Examples_1_yck2yg.jpg", use_container_width=True)
     
     st.title("📊 Pareto NKL System")
     st.subheader("Monitoring & Input Penjelasan Pareto")
