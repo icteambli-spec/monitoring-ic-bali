@@ -24,9 +24,9 @@ except:
 st.set_page_config(page_title="Pareto NKL System", layout="wide")
 
 # Database Path
-USER_DB = "pareto_nkl/config/users.json"
-LOG_DB = "pareto_nkl/config/access_logs.json"
-MASTER_PATH = "pareto_nkl/master_pareto.xlsx"
+USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
+LOG_DB = "pareto_nkl/config/access_pareto_nkllogs.json"
+MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
 
 # =================================================================
 # 2. FUNGSI CORE (DATABASE & DATA)
@@ -72,16 +72,42 @@ if st.session_state.page == "LOGIN":
     l_pw = st.text_input("Password:", type="password")
     
     col1, col2 = st.columns(2)
-    if col1.button("Masuk", type="primary", use_container_width=True):
-        db = load_json_db(USER_DB)
-        if l_nik in db and db[l_nik] == l_pw:
-            st.session_state.user_nik = l_nik
-            record_log(l_nik)
-            st.session_state.page = "USER_INPUT"
-            st.rerun()
-        else: st.error("NIK atau Password Salah!")
+    with col1:
+        if st.button("Masuk", type="primary", use_container_width=True):
+            db = load_json_db(USER_DB)
+            if l_nik in db and db[l_nik] == l_pw:
+                st.session_state.user_nik = l_nik
+                record_log(l_nik)
+                st.session_state.page = "USER_INPUT"
+                st.rerun()
+            else:
+                st.error("NIK atau Password Salah!")
     
-    if col2.button("🛡️ Admin Panel", use_container_width=True):
+    with col2:
+        # Tambahan Menu Daftar Akun menggunakan Popover
+        with st.popover("📝 Daftar Akun Baru", use_container_width=True):
+            st.subheader("Form Pendaftaran")
+            new_nik = st.text_input("Masukkan NIK Baru:", max_chars=10)
+            new_pw = st.text_input("Buat Password:", type="password")
+            confirm_pw = st.text_input("Konfirmasi Password:", type="password")
+            
+            if st.button("Kirim Pendaftaran"):
+                if not new_nik or not new_pw:
+                    st.warning("NIK dan Password tidak boleh kosong!")
+                elif new_pw != confirm_pw:
+                    st.error("Konfirmasi password tidak cocok!")
+                else:
+                    db = load_json_db(USER_DB)
+                    if new_nik in db:
+                        st.error("NIK sudah terdaftar!")
+                    else:
+                        db[new_nik] = new_pw
+                        save_json_db(USER_DB, db)
+                        st.success(f"✅ Akun NIK {new_nik} berhasil dibuat! Silakan Login.")
+
+    # Tombol Admin diletakkan di bawah agar tidak mengganggu alur login/daftar
+    st.write("---")
+    if st.button("🛡️ Admin Panel", use_container_width=True):
         st.session_state.page = "ADMIN_AUTH"
         st.rerun()
 
