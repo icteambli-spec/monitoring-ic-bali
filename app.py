@@ -206,33 +206,57 @@ elif st.session_state.page == "USER_INPUT":
     if df_m is not None:
         list_toko = sorted(df_m['TOKO'].unique())
         selected_toko = st.selectbox("PILIH TOKO:", list_toko)
+        
+        # Filter data berdasarkan toko yang dipilih
         data_toko = df_m[df_m['TOKO'] == selected_toko].copy()
         
-        st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
-        
-        # Cari nama kolom asli yang mengandung kata kunci tertentu
-    c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), 'RP JUAL')
-    c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), 'DESC')
+        # Pastikan data tidak kosong sebelum masuk ke editor
+        if not data_toko.empty:
+            st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
+            
+            # --- PERBAIKAN: Identifikasi kolom berada di dalam blok IF ---
+            c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), None)
+            c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), None)
+            c_penjelasan = next((c for c in data_toko.columns if 'penjelasan' in c.lower()), 'PENJELASAN')
 
-    edited_df = st.data_editor(   
-        data_toko,
-        column_config={
-        "PENJELASAN": st.column_config.TextColumn("PENJELASAN"),
-        c_rp: st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True),
-        c_desc: st.column_config.TextColumn("DESC", disabled=True),
-        # Pastikan kolom lain yang tidak ingin ditampilkan atau diatur tetap aman
-        },
-        hide_index=True, 
-        use_container_width=True
-        )
-          
-        if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf) as w: edited_df.to_excel(w, index=False)
-            p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
-            cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
-            st.success("✅ Data berhasil disimpan ke cloud!")
+            # Membangun konfigurasi kolom secara dinamis agar tidak error jika kolom tidak ada
+            config = {}
+            if c_penjelasan in data_toko.columns:
+                config[c_penjelasan] = st.column_config.TextColumn("PENJELASAN")
+            if c_rp:
+                config[c_rp] = st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True)
+            if c_desc:
+                config[c_desc] = st.column_config.TextColumn("DESC", disabled=True)
+            
+            # Kolom lain yang ingin dikunci (tambahkan sesuai kebutuhan file Excel Anda)
+            for col in ['TOKO', 'AM', 'PRDCD', 'QTY']:
+                if col in data_toko.columns:
+                    config[col] = st.column_config.Column(disabled=True)
+
+            # --- DATA EDITOR ---
+            edited_df = st.data_editor(   
+                data_toko,
+                column_config=config,
+                hide_index=True, 
+                use_container_width=True,
+                key=f"editor_{selected_toko}" # Key unik agar tidak konflik saat ganti toko
+            )
+              
+            if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf) as w: 
+                    edited_df.to_excel(w, index=False)
+                
+                p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
+                with st.spinner("Sedang menyimpan..."):
+                    cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
+                    st.success("✅ Data berhasil disimpan ke cloud!")
+        else:
+            st.warning(f"Tidak ada data untuk toko {selected_toko}")
+            
     else:
-        st.warning("⚠️ File Master belum diupload oleh Admin.")
+        st.warning("⚠️ File Master belum diupload atau gagal dibaca.")
 
-    if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
+    if st.button("🚪 Logout"): 
+        st.session_state.page = "LOGIN"
+        st.rerun()
