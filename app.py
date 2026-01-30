@@ -127,7 +127,7 @@ def get_master_data():
     except: return None
 
 # --- HALAMAN USER INPUT ---
-elif st.session_state.page == "USER_INPUT":
+ elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Penjelasan Pareto")
     df_m = get_master_data()
     
