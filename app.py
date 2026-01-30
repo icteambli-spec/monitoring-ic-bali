@@ -197,7 +197,6 @@ elif st.session_state.page == "ADMIN_PANEL":
             st.success(f"✅ Password NIK {r_nik} berhasil direset.")
             
     if st.button("🚪 Keluar Admin"): st.session_state.page = "LOGIN"; st.rerun()
-
 # --- HALAMAN USER INPUT ---
 elif st.session_state.page == "USER_INPUT":
     st.title(f"📋 Input Penjelasan Pareto ({st.session_state.user_nik})")
@@ -207,39 +206,39 @@ elif st.session_state.page == "USER_INPUT":
         list_toko = sorted(df_m['TOKO'].unique())
         selected_toko = st.selectbox("PILIH TOKO:", list_toko)
         
-        # Filter data berdasarkan toko yang dipilih
+        # Filter data toko
         data_toko = df_m[df_m['TOKO'] == selected_toko].copy()
         
-        # Pastikan data tidak kosong sebelum masuk ke editor
         if not data_toko.empty:
             st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
             
-            # --- PERBAIKAN: Identifikasi kolom berada di dalam blok IF ---
+            # 1. Identifikasi nama kolom secara aman (Case-Insensitive)
             c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), None)
             c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), None)
             c_penjelasan = next((c for c in data_toko.columns if 'penjelasan' in c.lower()), 'PENJELASAN')
 
-            # Membangun konfigurasi kolom secara dinamis agar tidak error jika kolom tidak ada
-            config = {}
-            if c_penjelasan in data_toko.columns:
-                config[c_penjelasan] = st.column_config.TextColumn("PENJELASAN")
+            # 2. Bangun konfigurasi kolom secara dinamis
+            config = {
+                c_penjelasan: st.column_config.TextColumn("PENJELASAN", required=True)
+            }
+            
             if c_rp:
                 config[c_rp] = st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True)
             if c_desc:
                 config[c_desc] = st.column_config.TextColumn("DESC", disabled=True)
             
-            # Kolom lain yang ingin dikunci (tambahkan sesuai kebutuhan file Excel Anda)
-            for col in ['TOKO', 'AM', 'PRDCD', 'QTY']:
+            # Kunci kolom standar lainnya jika ada
+            for col in ['TOKO', 'AM', 'PRDCD', 'QTY', 'TANGGAL']:
                 if col in data_toko.columns:
                     config[col] = st.column_config.Column(disabled=True)
 
-            # --- DATA EDITOR ---
+            # 3. DATA EDITOR dengan Unique Key (Penting untuk cegah error saat ganti toko)
             edited_df = st.data_editor(   
                 data_toko,
                 column_config=config,
                 hide_index=True, 
                 use_container_width=True,
-                key=f"editor_{selected_toko}" # Key unik agar tidak konflik saat ganti toko
+                key=f"editor_{selected_toko}" # Menghindari tabrakan ID saat pindah toko
             )
               
             if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
@@ -250,12 +249,11 @@ elif st.session_state.page == "USER_INPUT":
                 p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
                 with st.spinner("Sedang menyimpan..."):
                     cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
-                    st.success("✅ Data berhasil disimpan ke cloud!")
+                    st.success(f"✅ Data toko {selected_toko} berhasil disimpan!")
         else:
-            st.warning(f"Tidak ada data untuk toko {selected_toko}")
-            
+            st.warning(f"Data untuk toko {selected_toko} tidak ditemukan.")
     else:
-        st.warning("⚠️ File Master belum diupload atau gagal dibaca.")
+        st.warning("⚠️ File Master belum diupload atau tidak terbaca.")
 
     if st.button("🚪 Logout"): 
         st.session_state.page = "LOGIN"
