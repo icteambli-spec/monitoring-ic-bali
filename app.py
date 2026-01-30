@@ -98,6 +98,9 @@ def get_master_data():
         url = res['secure_url']
         resp = requests.get(url)
         df = pd.read_excel(io.BytesIO(resp.content))
+        
+        # Tambahkan baris ini untuk membersihkan nama kolom dari spasi liar
+        df.columns = [str(c).strip() for c in df.columns] 
         return df
     except: return None
 
@@ -207,20 +210,22 @@ elif st.session_state.page == "USER_INPUT":
         
         st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
         
-        edited_df = st.data_editor(
-            data_toko,
-            column_config={
-                "PENJELASAN": st.column_config.TextColumn("PENJELASAN (Alfanumerik)", help="Wajib diisi"),
-                "TOKO": None,
-                "AM": st.column_config.TextColumn("AM", disabled=True),
-                "PRDCD": st.column_config.TextColumn("PRDCD", disabled=True),
-                "DESC": st.column_config.TextColumn("DESC", disabled=True),
-                "QTY": st.column_config.NumberColumn("QTY", disabled=True),
-                "RP JUAL": st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True),
-            },
-            hide_index=True, use_container_width=True
+        # Cari nama kolom asli yang mengandung kata kunci tertentu
+     c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), 'RP JUAL')
+     c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), 'DESC')
+
+    edited_df = st.data_editor(   
+        data_toko,
+        column_config={
+        "PENJELASAN": st.column_config.TextColumn("PENJELASAN"),
+        c_rp: st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True),
+        c_desc: st.column_config.TextColumn("DESC", disabled=True),
+        # Pastikan kolom lain yang tidak ingin ditampilkan atau diatur tetap aman
+        },
+        hide_index=True, 
+        use_container_width=True
         )
-        
+          
         if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
             buf = io.BytesIO()
             with pd.ExcelWriter(buf) as w: edited_df.to_excel(w, index=False)
