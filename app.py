@@ -24,13 +24,12 @@ except:
 st.set_page_config(page_title="Pareto NKL System", layout="wide")
 
 # =================================================================
-# 2. CSS CUSTOM UNTUK BACKGROUND IMAGE & DARK MODE TWEAKS
+# 2. CSS CUSTOM (GLASSMORPHISM & BACKGROUND)
 # =================================================================
 def add_custom_css():
     st.markdown(
         f"""
         <style>
-        /* Mengatur Background Utama */
         .stApp {{
             background: linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)), 
                         url("https://res.cloudinary.com/dydpottpm/image/upload/v1769698444/What_is_Fraud__Definition_and_Examples_1_yck2yg.jpg");
@@ -38,21 +37,14 @@ def add_custom_css():
             background-position: center;
             background-attachment: fixed;
         }}
-
-        /* Membuat Form & Input lebih kontras (Glassmorphism) */
         .stTextInput input, .stSelectbox div, .stTextArea textarea {{
             background-color: rgba(255, 255, 255, 0.1) !important;
             color: white !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
         }}
-        
-        /* Mengatur warna teks agar tetap terbaca */
         h1, h2, h3, p, span, label {{
             color: white !important;
             text-shadow: 1px 1px 2px black;
         }}
-
-        /* Tabel data editor agar tetap jelas */
         div[data-testid="stDataEditor"] {{
             background-color: rgba(255, 255, 255, 0.05);
             border-radius: 10px;
@@ -65,7 +57,7 @@ def add_custom_css():
 
 add_custom_css()
 
-# Database Path
+# Path Database
 USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
 LOG_DB = "pareto_nkl/config/access_pareto_nkllogs.json"
 MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
@@ -98,9 +90,7 @@ def get_master_data():
         url = res['secure_url']
         resp = requests.get(url)
         df = pd.read_excel(io.BytesIO(resp.content))
-        
-        # Tambahkan baris ini untuk membersihkan nama kolom dari spasi liar
-        df.columns = [str(c).strip() for c in df.columns] 
+        df.columns = [str(c).strip() for c in df.columns] # Bersihkan nama kolom
         return df
     except: return None
 
@@ -113,8 +103,6 @@ if 'user_nik' not in st.session_state: st.session_state.user_nik = ""
 # --- HALAMAN LOGIN ---
 if st.session_state.page == "LOGIN":
     st.title("📊 Pareto NKL System")
-    st.subheader("Monitoring & Input Penjelasan Pareto")
-    
     l_nik = st.text_input("NIK:", max_chars=10)
     l_pw = st.text_input("Password:", type="password")
     
@@ -127,77 +115,60 @@ if st.session_state.page == "LOGIN":
                 record_log(l_nik)
                 st.session_state.page = "USER_INPUT"
                 st.rerun()
-            else:
-                st.error("NIK atau Password Salah!")
+            else: st.error("NIK atau Password Salah!")
     
     with col2:
         with st.popover("📝 Daftar Akun Baru", use_container_width=True):
-            st.subheader("Form Pendaftaran")
-            new_nik = st.text_input("Masukkan NIK Baru:", max_chars=10)
+            new_nik = st.text_input("NIK Baru:", max_chars=10)
             new_pw = st.text_input("Buat Password:", type="password")
-            confirm_pw = st.text_input("Konfirmasi Password:", type="password")
-            
+            confirm_pw = st.text_input("Konfirmasi:", type="password")
             if st.button("Kirim Pendaftaran"):
-                if not new_nik or not new_pw:
-                    st.warning("NIK dan Password tidak boleh kosong!")
-                elif new_pw != confirm_pw:
-                    st.error("Konfirmasi password tidak cocok!")
-                else:
+                if new_pw == confirm_pw and new_nik:
                     db = load_json_db(USER_DB)
-                    if new_nik in db:
-                        st.error("NIK sudah terdaftar!")
-                    else:
-                        db[new_nik] = new_pw
-                        save_json_db(USER_DB, db)
-                        st.success(f"✅ Akun NIK {new_nik} berhasil dibuat! Silakan Login.")
+                    db[new_nik] = new_pw
+                    save_json_db(USER_DB, db)
+                    st.success("✅ Berhasil! Silakan Login.")
 
-    st.write("---")
+    st.divider()
     if st.button("🛡️ Admin Panel", use_container_width=True):
-        st.session_state.page = "ADMIN_AUTH"
-        st.rerun()
+        st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
-# --- HALAMAN ADMIN AUTH ---
+# --- HALAMAN ADMIN PANEL ---
 elif st.session_state.page == "ADMIN_AUTH":
-    st.header("🛡️ Admin Authorization")
     adm_pw = st.text_input("Admin Password:", type="password")
     if st.button("Login Admin"):
         if adm_pw == "icnkl034":
-            st.session_state.page = "ADMIN_PANEL"
-            st.rerun()
-        else: st.error("Akses Ditolak!")
+            st.session_state.page = "ADMIN_PANEL"; st.rerun()
+        else: st.error("Salah!")
     if st.button("⬅️ Kembali"): st.session_state.page = "LOGIN"; st.rerun()
 
-# --- HALAMAN ADMIN PANEL ---
 elif st.session_state.page == "ADMIN_PANEL":
-    st.title("🛡️ Dashboard Admin")
-    t1, t2, t3 = st.tabs(["📤 Upload Master", "📊 Log Akses", "🔐 Reset Password"])
-
-    with t1:
-        st.subheader("Update Master Pareto")
-        f_master = st.file_uploader("Upload Excel", type=["xlsx"])
-        if f_master and st.button("Publish Master Baru"):
-            cloudinary.uploader.upload(f_master, resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            st.success("✅ Master Berhasil Diperbarui!"); st.cache_data.clear()
-
-    with t2:
-        st.subheader("Log Aktivitas User")
+    st.title("🛡️ Admin Panel")
+    tab1, tab2, tab3 = st.tabs(["📤 Upload", "📊 Log", "🔐 Reset"])
+    
+    with tab1:
+        f = st.file_uploader("Upload Master Excel", type=["xlsx"])
+        if f and st.button("Publish"):
+            cloudinary.uploader.upload(f, resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
+            st.success("Master Update!"); st.cache_data.clear()
+            
+    with tab2:
         logs = load_json_db(LOG_DB)
         if logs:
-            flat_logs = [{"NIK": k, "Waktu Akses": t} for k, v in logs.items() for t in v]
-            st.dataframe(pd.DataFrame(flat_logs).sort_values("Waktu Akses", ascending=False), use_container_width=True)
-
-    with t3:
-        st.subheader("Reset Password User")
-        r_nik = st.text_input("Masukkan NIK:")
-        r_pw = st.text_input("Password Baru:", type="password")
-        if st.button("Simpan Password"):
+            flat = [{"NIK": k, "Waktu": t} for k, v in logs.items() for t in v]
+            st.dataframe(pd.DataFrame(flat), use_container_width=True)
+            
+    with tab3:
+        r_nik = st.text_input("NIK yang direset:")
+        r_pw = st.text_input("Pass Baru:", type="password")
+        if st.button("Reset"):
             db = load_json_db(USER_DB)
             db[r_nik] = r_pw
-            save_json_db(USER_DB, db)
-            st.success(f"✅ Password NIK {r_nik} berhasil direset.")
-            
-    if st.button("🚪 Keluar Admin"): st.session_state.page = "LOGIN"; st.rerun()
-# --- HALAMAN USER INPUT ---
+            save_json_db(USER_DB, db); st.success("Reset Berhasil!")
+
+    if st.button("🚪 Keluar"): st.session_state.page = "LOGIN"; st.rerun()
+
+# --- HALAMAN USER INPUT (PERBAIKAN UTAMA) ---
 elif st.session_state.page == "USER_INPUT":
     st.title(f"📋 Input Penjelasan Pareto ({st.session_state.user_nik})")
     df_m = get_master_data()
@@ -205,40 +176,37 @@ elif st.session_state.page == "USER_INPUT":
     if df_m is not None:
         list_toko = sorted(df_m['TOKO'].unique())
         selected_toko = st.selectbox("PILIH TOKO:", list_toko)
-        
-        # Filter data toko
         data_toko = df_m[df_m['TOKO'] == selected_toko].copy()
         
         if not data_toko.empty:
-            st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
+            st.info(f"Menampilkan {len(data_toko)} item untuk {selected_toko}")
             
-            # 1. Identifikasi nama kolom secara aman (Case-Insensitive)
-            c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), None)
-            c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), None)
+            # --- Perbaikan: Identifikasi kolom berada di dalam blok data ---
+            c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), 'RP JUAL')
+            c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), 'DESC')
             c_penjelasan = next((c for c in data_toko.columns if 'penjelasan' in c.lower()), 'PENJELASAN')
 
-            # 2. Bangun konfigurasi kolom secara dinamis
+            # Build Config Dinamis agar tidak error jika kolom tidak ditemukan
             config = {
                 c_penjelasan: st.column_config.TextColumn("PENJELASAN", required=True)
             }
-            
-            if c_rp:
+            if c_rp in data_toko.columns:
                 config[c_rp] = st.column_config.NumberColumn("RP JUAL", format="Rp %d", disabled=True)
-            if c_desc:
+            if c_desc in data_toko.columns:
                 config[c_desc] = st.column_config.TextColumn("DESC", disabled=True)
-            
-            # Kunci kolom standar lainnya jika ada
+
+            # Kunci kolom lain yang bersifat informatif
             for col in ['TOKO', 'AM', 'PRDCD', 'QTY', 'TANGGAL']:
                 if col in data_toko.columns:
                     config[col] = st.column_config.Column(disabled=True)
 
-            # 3. DATA EDITOR dengan Unique Key (Penting untuk cegah error saat ganti toko)
+            # EDITOR dengan Unique Key untuk mencegah StreamlitAPIException
             edited_df = st.data_editor(   
                 data_toko,
                 column_config=config,
                 hide_index=True, 
                 use_container_width=True,
-                key=f"editor_{selected_toko}" # Menghindari tabrakan ID saat pindah toko
+                key=f"editor_{selected_toko}" # Mencegah konflik ID saat ganti toko
             )
               
             if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
@@ -247,14 +215,12 @@ elif st.session_state.page == "USER_INPUT":
                     edited_df.to_excel(w, index=False)
                 
                 p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
-                with st.spinner("Sedang menyimpan..."):
+                with st.spinner("Menyimpan..."):
                     cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
-                    st.success(f"✅ Data toko {selected_toko} berhasil disimpan!")
+                    st.success(f"✅ Data {selected_toko} tersimpan!")
         else:
-            st.warning(f"Data untuk toko {selected_toko} tidak ditemukan.")
+            st.warning("Data tidak ditemukan.")
     else:
-        st.warning("⚠️ File Master belum diupload atau tidak terbaca.")
+        st.warning("⚠️ File Master belum tersedia.")
 
-    if st.button("🚪 Logout"): 
-        st.session_state.page = "LOGIN"
-        st.rerun()
+    if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
