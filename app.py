@@ -211,8 +211,8 @@ elif st.session_state.page == "USER_INPUT":
         st.info(f"Menampilkan {len(data_toko)} item Pareto untuk toko {selected_toko}")
         
         # Cari nama kolom asli yang mengandung kata kunci tertentu
-     c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), 'RP JUAL')
-     c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), 'DESC')
+    c_rp = next((c for c in data_toko.columns if 'rp' in c.lower()), 'RP JUAL')
+    c_desc = next((c for c in data_toko.columns if 'desc' in c.lower()), 'DESC')
 
     edited_df = st.data_editor(   
         data_toko,
