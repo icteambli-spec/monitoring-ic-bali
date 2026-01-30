@@ -104,6 +104,29 @@ elif st.session_state.page == "ADMIN_PANEL":
 # =================================================================
 # 4. USER INPUT (FIXED ERROR)
 # =================================================================
+@st.cache_data(ttl=30)
+def get_master_data():
+    try:
+        res = cloudinary.api.resource(MASTER_PATH, resource_type="raw", cache_control="no-cache")
+        resp = requests.get(res['secure_url'])
+        df = pd.read_excel(io.BytesIO(resp.content))
+        
+        # 1. Bersihkan nama kolom
+        df.columns = [str(c).strip() for c in df.columns]
+        
+        # 2. Pembersihan data agar tidak memicu APIException
+        for col in df.columns:
+            # Pastikan semua data terbaca sebagai string/angka standar, hilangkan NaN
+            df[col] = df[col].fillna("")
+            
+        # Paksa PRDCD tetap string agar tidak berubah jadi format scientific (e.g. 1.00E+07)
+        if 'PRDCD' in df.columns:
+            df['PRDCD'] = df['PRDCD'].astype(str)
+            
+        return df
+    except: return None
+
+# --- HALAMAN USER INPUT ---
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Penjelasan Pareto")
     df_m = get_master_data()
@@ -112,32 +135,30 @@ elif st.session_state.page == "USER_INPUT":
         list_toko = sorted(df_m['TOKO'].unique())
         selected_toko = st.selectbox("PILIH TOKO:", list_toko)
         
-        # Ambil data toko dan bersihkan tipe data
-        data_toko = df_m[df_m['TOKO'] == selected_toko].copy()
-        data_toko = data_toko.fillna("") # Hilangkan nilai NaN agar tidak error
+        # Filter data dan reset index agar state widget tetap stabil
+        data_toko = df_m[df_m['TOKO'] == selected_toko].copy().reset_index(drop=True)
         
         if not data_toko.empty:
             st.info(f"Menampilkan {len(data_toko)} item untuk toko {selected_toko}")
             
-            # Konfigurasi kolom sesuai foto Excel Anda
-            # PRDCD, DESC, QTY, RP JUAL dibaca sebagai kolom info (disabled)
+            # 3. Konfigurasi Kolom yang 'Safe' (Menggunakan format teks untuk data akuntansi)
             config = {
                 "TOKO": st.column_config.Column(disabled=True),
                 "AM": st.column_config.Column(disabled=True),
                 "PRDCD": st.column_config.TextColumn("PRDCD", disabled=True),
                 "DESC": st.column_config.TextColumn("DESC", disabled=True),
-                "QTY": st.column_config.Column("QTY", disabled=True),
-                "RP JUAL": st.column_config.Column("RP JUAL", disabled=True),
+                "QTY": st.column_config.TextColumn("QTY", disabled=True), # Gunakan Text agar format (angka) aman
+                "RP JUAL": st.column_config.TextColumn("RP JUAL", disabled=True), # Gunakan Text agar format (angka) aman
                 "PENJELASAN": st.column_config.TextColumn("PENJELASAN", required=True)
             }
 
-            # Gunakan Key Unik agar tidak error saat ganti toko
+            # 4. Gunakan key unik yang menyertakan jumlah baris agar widget ter-reset sempurna
             edited_df = st.data_editor(
                 data_toko,
                 column_config=config,
                 hide_index=True,
                 use_container_width=True,
-                key=f"editor_{selected_toko}" 
+                key=f"editor_{selected_toko}_{len(data_toko)}" 
             )
             
             if st.button("🚀 Simpan Penjelasan", type="primary", use_container_width=True):
@@ -146,11 +167,10 @@ elif st.session_state.page == "USER_INPUT":
                     edited_df.to_excel(w, index=False)
                 
                 p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}.xlsx"
-                cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
-                st.success(f"✅ Data {selected_toko} Berhasil Disimpan!")
+                with st.spinner("Menyimpan..."):
+                    cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True)
+                    st.success(f"✅ Data {selected_toko} Berhasil Disimpan!")
         else:
             st.warning("Data tidak tersedia.")
     else:
         st.error("Gagal memuat Master.")
-
-    if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
