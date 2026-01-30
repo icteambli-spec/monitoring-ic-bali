@@ -7,7 +7,7 @@ import io
 import requests
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # =================================================================
 # 1. KONFIGURASI & CLOUDINARY
@@ -24,7 +24,7 @@ except:
 
 st.set_page_config(page_title="Pareto NKL System", layout="wide")
 
-# CSS Custom untuk tema gelap & teks putih
+# Custom CSS untuk tampilan Glassmorphism
 st.markdown("""
     <style>
     .stApp {
@@ -41,10 +41,10 @@ USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
 MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
 
 # =================================================================
-# 2. FUNGSI CORE & CLEANING
+# 2. FUNGSI CORE & PEMBERSIHAN DATA (FIX ERROR DATA TYPE)
 # =================================================================
 def clean_numeric(val):
-    """Konversi format (262,200) ke float agar tidak error APIException"""
+    """Mengonversi format akuntansi (262,200) menjadi float standar"""
     if pd.isna(val) or val == "": return 0.0
     s = str(val).replace(',', '').replace(' ', '')
     if '(' in s and ')' in s:
@@ -61,22 +61,29 @@ def get_master_data():
         resp = requests.get(res['secure_url'])
         df = pd.read_excel(io.BytesIO(resp.content))
         df.columns = [str(c).strip() for c in df.columns]
-        for col in ['QTY', 'RP JUAL']:
-            if col in df.columns:
+        
+        # Bersihkan data agar tidak memicu StreamlitAPIException
+        for col in df.columns:
+            if col in ['QTY', 'RP JUAL']:
                 df[col] = df[col].apply(clean_numeric)
+            else:
+                df[col] = df[col].fillna("")
+        
         if 'PRDCD' in df.columns:
             df['PRDCD'] = df['PRDCD'].astype(str)
         return df, v
     except: return None, "0"
 
 def get_existing_result(toko_code, version):
-    """Mengambil data yang sudah pernah disimpan agar tidak kosong lagi"""
+    """Memuat data yang sudah disimpan agar inputan tidak hilang"""
     try:
         p_id = f"pareto_nkl/hasil/Hasil_{toko_code}_v{version}.xlsx"
         url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}"
         resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
-            return pd.read_excel(io.BytesIO(resp.content))
+            df_res = pd.read_excel(io.BytesIO(resp.content))
+            df_res.columns = [str(c).strip() for c in df_res.columns]
+            return df_res
     except: pass
     return None
 
@@ -109,53 +116,50 @@ elif st.session_state.page == "ADMIN_AUTH":
     if st.button("Kembali"): st.session_state.page = "LOGIN"; st.rerun()
 
 # =================================================================
-# 4. ADMIN PANEL (MONITORING & REKAP)
+# 4. ADMIN PANEL (MONITORING & GABUNG DATA)
 # =================================================================
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Dashboard Admin")
     df_m_check, v_aktif = get_master_data()
     
-    tab1, tab2 = st.tabs(["📊 Monitoring Progres", "📤 Upload Master"])
+    tab1, tab2 = st.tabs(["📊 Monitoring & Rekap", "📤 Upload Master"])
     
     with tab1:
         st.subheader(f"Versi Master Aktif: {v_aktif}")
-        target_v = st.text_input("Cek Progres Versi:", value=v_aktif)
+        target_v = st.text_input("Masukkan Versi untuk ditarik:", value=v_aktif)
         
-        if st.button("🔍 Cek & Gabungkan Data"):
-            with st.spinner("Memindai file di cloud..."):
+        if st.button("🔍 Cek Progres & Gabungkan"):
+            with st.spinner("Memproses data cloud..."):
                 res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_")
-                all_f = res.get('resources', [])
-                filtered = [f for f in all_f if f"v{target_v}" in f['public_id']]
+                filtered = [f for f in res.get('resources', []) if f"v{target_v}" in f['public_id']]
                 
                 if not filtered:
-                    st.warning("Belum ada toko yang mengisi untuk versi ini.")
+                    st.warning(f"Belum ada data untuk versi {target_v}")
                 else:
-                    monitor_list = []
-                    combined_dfs = []
+                    monitor_data, combined_list = [], []
                     for f in filtered:
                         toko_id = f['public_id'].split('_')[1]
-                        monitor_list.append({"Kode Toko": toko_id, "Waktu Simpan": f['created_at'], "ID File": f['public_id']})
-                        combined_dfs.append(pd.read_excel(requests.get(f['secure_url']).url))
+                        monitor_data.append({"Toko": toko_id, "Waktu Simpan": f['created_at']})
+                        combined_list.append(pd.read_excel(requests.get(f['secure_url']).url))
                     
-                    st.success(f"Ditemukan {len(monitor_list)} toko.")
-                    st.dataframe(pd.DataFrame(monitor_list), use_container_width=True)
+                    st.success(f"Ditemukan {len(monitor_data)} toko.")
+                    st.dataframe(pd.DataFrame(monitor_data), use_container_width=True, hide_index=True)
                     
-                    # Gabung Data
-                    final_df = pd.concat(combined_dfs, ignore_index=True).drop_duplicates(subset=['TOKO', 'PRDCD'], keep='last')
+                    final_df = pd.concat(combined_list, ignore_index=True).drop_duplicates(subset=['TOKO', 'PRDCD'], keep='last')
                     out = io.BytesIO()
                     with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
-                    st.download_button("📥 Download Rekap Gabungan", out.getvalue(), f"Rekap_V{target_v}.xlsx", use_container_width=True)
+                    st.download_button("📥 Download Rekap", out.getvalue(), f"Rekap_V{target_v}.xlsx", use_container_width=True)
 
     with tab2:
         f_up = st.file_uploader("Upload Excel Master Baru", type=["xlsx"])
-        if f_up and st.button("🚀 Publish & Update Versi"):
+        if f_up and st.button("🚀 Publish Master"):
             cloudinary.uploader.upload(f_up, resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            st.success("Master Berhasil Diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+            st.success("Master Update!"); st.cache_data.clear(); time.sleep(1); st.rerun()
             
-    if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
+    if st.button("🚪 Logout Admin"): st.session_state.page = "LOGIN"; st.rerun()
 
 # =================================================================
-# 5. USER INPUT (PERSISTENCE & ANTI-ERROR)
+# 5. USER INPUT (FIXED PERSISTENCE & ERROR)
 # =================================================================
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Penjelasan Pareto")
@@ -165,19 +169,17 @@ elif st.session_state.page == "USER_INPUT":
         list_toko = sorted(df_m['TOKO'].unique())
         selected_toko = st.selectbox("PILIH TOKO:", list_toko)
         
-        # LOGIKA PERSISTENCE: Cek apakah sudah ada hasil sebelumnya
+        # Cek data lama agar inputan tidak hilang
         existing_df = get_existing_result(selected_toko, v_master)
         
         if existing_df is not None:
             data_toko = existing_df.copy()
-            st.success(f"Memuat data tersimpan (V{v_master}). Anda bisa melanjutkan pengisian.")
+            st.success(f"Memuat data tersimpan (V{v_master}).")
         else:
             data_toko = df_m[df_m['TOKO'] == selected_toko].copy().reset_index(drop=True)
-            st.info("Menampilkan data baru dari Master.")
+            st.info(f"Menampilkan data baru untuk {selected_toko}")
 
-        if "PENJELASAN" not in data_toko.columns: data_toko["PENJELASAN"] = ""
-
-        # Konfigurasi Editor (QTY & RP JUAL dipaksa Number agar tidak error)
+        # Konfigurasi Editor (QTY & RP JUAL dipaksa Number agar stabil)
         config = {
             "QTY": st.column_config.NumberColumn("QTY", format="%.0f", disabled=True),
             "RP JUAL": st.column_config.NumberColumn("RP JUAL", format="%.0f", disabled=True),
@@ -188,7 +190,7 @@ elif st.session_state.page == "USER_INPUT":
             "AM": st.column_config.Column(disabled=True)
         }
 
-        # Key unik: gabungan toko + versi + jumlah baris untuk kestabilan widget
+        # Key unik berbasis toko + versi + jumlah baris untuk mencegah APIException
         edited_df = st.data_editor(
             data_toko,
             column_config=config,
@@ -205,7 +207,7 @@ elif st.session_state.page == "USER_INPUT":
             p_id = f"pareto_nkl/hasil/Hasil_{selected_toko}_v{v_master}.xlsx"
             with st.spinner("Menyimpan..."):
                 cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                st.success("✅ Berhasil Disimpan! Data tidak akan hilang saat Anda kembali.")
+                st.success("✅ Tersimpan! Data tidak akan hilang saat diakses kembali.")
                 time.sleep(1); st.rerun()
     
     if st.button("🚪 Logout"): st.session_state.page = "LOGIN"; st.rerun()
