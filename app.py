@@ -93,7 +93,7 @@ def update_user_db(new_db):
     except: return False
 
 # =================================================================
-# 3. ROUTING & LOGIN
+# 3. ROUTING & HOME
 # =================================================================
 if 'page' not in st.session_state: st.session_state.page = "HOME"
 
@@ -125,7 +125,7 @@ if st.session_state.page == "HOME":
                 else:
                     db[d_nik] = d_pw
                     if update_user_db(db): st.success("Pendaftaran Berhasil!")
-            else: st.error("Data tidak valid / Password tidak cocok.")
+            else: st.error("Data tidak valid.")
     if st.button("🛡️ Admin Login", use_container_width=True): st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
 elif st.session_state.page == "ADMIN_AUTH":
@@ -136,11 +136,11 @@ elif st.session_state.page == "ADMIN_AUTH":
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 4. ADMIN PANEL (MODIFIKASI INCREMENTAL & RESET)
+# 4. ADMIN PANEL (DENGAN RESET PASSWORD)
 # =================================================================
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
-    tab_rek, tab_mas, tab_res = st.tabs(["📊 Rekap", "📤 Update Master", "🔥 Reset System"])
+    tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
     
     with tab_rek:
         df_m_check, v_aktif = get_master_data()
@@ -150,52 +150,50 @@ elif st.session_state.page == "ADMIN_PANEL":
             filtered = [f for f in res.get('resources', []) if f"v{target_v}" in f['public_id']]
             if filtered:
                 combined = [pd.read_excel(requests.get(f['secure_url']).url) for f in filtered]
-                final_df = pd.concat(combined, ignore_index=True).drop_duplicates()
+                final_df = pd.concat(combined, ignore_index=True)
                 out = io.BytesIO()
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
                 st.download_button("📥 Download Rekap", out.getvalue(), f"Rekap_V{target_v}.xlsx")
-            else: st.warning("Belum ada data.")
 
     with tab_mas:
-        st.info("Opsi 3: Master akan bertambah (Incremental). Toko lama tidak terhapus.")
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
-            with st.spinner("Menggabungkan data..."):
-                old_df, _ = get_master_data()
-                new_df = pd.read_excel(f_up)
-                new_df.columns = [str(c).strip().upper() for c in new_df.columns]
-                
-                if old_df is not None:
-                    # Gabungkan dan hapus duplikat berdasarkan KDTOKO dan PLU
-                    final_master = pd.concat([old_df, new_df], ignore_index=True)
-                    final_master = final_master.drop_duplicates(subset=['KDTOKO', 'PLU'], keep='last')
-                else:
-                    final_master = new_df
-                
-                buf = io.BytesIO()
-                with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
-                cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-                st.success(f"Master diperbarui! Total: {len(final_master)} baris data."); st.cache_data.clear(); time.sleep(1); st.rerun()
+            old_df, _ = get_master_data()
+            new_df = pd.read_excel(f_up)
+            new_df.columns = [str(c).strip().upper() for c in new_df.columns]
+            final_master = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PLU'], keep='last')
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
+            cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
+            st.success("Master diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+
+    with tab_usr:
+        st.subheader("Reset Password User")
+        try:
+            url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
+            db_u = requests.get(url_user).json()
+            nik_pilihan = st.selectbox("Pilih NIK User:", options=list(db_u.keys()))
+            pass_baru = st.text_input("Password Baru:", type="password")
+            if st.button("Update Password"):
+                if pass_baru:
+                    db_u[nik_pilihan] = pass_baru
+                    if update_user_db(db_u): st.success(f"Password NIK {nik_pilihan} berhasil diupdate!")
+                else: st.warning("Isi password!")
+        except: st.error("Gagal muat user.")
 
     with tab_res:
-        st.warning("BAHAYA: Fitur ini akan menghapus SELURUH data master dan hasil input user.")
         konfirmasi = st.text_input("Ketik 'KONFIRMASI' untuk reset:")
-        if st.button("🔥 RESET GLOBAL SEKARANG", type="primary"):
+        if st.button("🔥 RESET GLOBAL", type="primary"):
             if konfirmasi == "KONFIRMASI":
-                with st.spinner("Membersihkan cloud..."):
-                    # Hapus folder hasil
-                    res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
-                    p_ids = [f['public_id'] for f in res.get('resources', [])]
-                    if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
-                    # Hapus Master
-                    cloudinary.uploader.destroy(MASTER_PATH, resource_type="raw")
-                    st.success("Sistem dikosongkan!"); st.cache_data.clear(); time.sleep(1); st.rerun()
-            else: st.error("Kata konfirmasi salah!")
+                res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
+                p_ids = [f['public_id'] for f in res.get('resources', [])]
+                if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
+                st.success("Dibersihkan!"); time.sleep(1); st.rerun()
 
     if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 5. USER INPUT (LOGIKA SKENARIO A)
+# 5. USER INPUT (SINKRONISASI KOLOM)
 # =================================================================
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Pareto")
@@ -212,14 +210,20 @@ elif st.session_state.page == "USER_INPUT":
         c1, c2 = st.columns(2)
         c1.metric("KDTOKO:", val_kdtoko); c2.metric("AS:", val_as)
 
-        # SKENARIO A: Cek apakah toko ini sudah pernah diisi di versi master saat ini
         existing_df = get_existing_result(val_kdtoko, v_master)
         if existing_df is not None:
             data_toko = existing_df.copy()
-            st.success("Skenario A: Memuat penjelasan yang sudah Anda isi sebelumnya.")
+            st.success("Memuat data tersimpan.")
         else:
             data_toko = df_selected.copy()
             if 'KETERANGAN' not in data_toko.columns: data_toko['KETERANGAN'] = ""
+
+        # SINKRONISASI: Pastikan kolom Master + KETERANGAN ada di urutan yang benar
+        original_cols = list(df_m.columns)
+        if 'KETERANGAN' not in original_cols: 
+            save_cols_order = original_cols + ['KETERANGAN']
+        else:
+            save_cols_order = original_cols
 
         disp_cols = ['PLU', 'DESC', 'QTY', 'RUPIAH', 'KETERANGAN']
         config = {
@@ -229,17 +233,24 @@ elif st.session_state.page == "USER_INPUT":
             "RUPIAH": st.column_config.NumberColumn("RUPIAH", format="%.0f", disabled=True),
             "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True),
         }
+        
         edited_df = st.data_editor(data_toko[disp_cols], column_config=config, hide_index=True, use_container_width=True, key=f"ed_{val_kdtoko}")
         
         if st.button("🚀 Simpan Hasil Input", type="primary", use_container_width=True):
             if edited_df['KETERANGAN'].apply(lambda x: str(x).strip() == "").any():
                 st.error("⚠️ Semua kolom KETERANGAN wajib diisi!")
             else:
-                for col in data_toko.columns:
-                    if col not in disp_cols: edited_df[col] = data_toko[col].values
+                # PROSES SINKRONISASI KOLOM:
+                # Update kolom KETERANGAN pada data_toko (yang membawa semua kolom master)
+                data_toko['KETERANGAN'] = edited_df['KETERANGAN'].values
+                
+                # Paksa urutan kolom agar sesuai format Master (KETERANGAN di akhir)
+                final_save_df = data_toko[save_cols_order]
+                
                 buf = io.BytesIO()
-                with pd.ExcelWriter(buf) as w: edited_df.to_excel(w, index=False)
+                with pd.ExcelWriter(buf) as w: final_save_df.to_excel(w, index=False)
                 p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                 cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                st.success("✅ Tersimpan!"); time.sleep(1); st.rerun()
+                st.success("✅ Tersimpan!"); time.sleep(3); st.rerun()
+
     if st.button("Logout"): st.session_state.page = "HOME"; st.rerun()
