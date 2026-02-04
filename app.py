@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 # 1. KONFIGURASI & CLOUDINARY
 # =================================================================
 try:
+    # Memastikan case-insensitive pada pemanggilan secrets jika manual
     cloudinary.config( 
       cloud_name = st.secrets["cloud_name"], 
       api_key = st.secrets["api_key"], 
@@ -24,7 +25,7 @@ except:
 
 st.set_page_config(page_title="Pareto NKL System", layout="wide")
 
-# Custom CSS untuk tampilan Background & Tabel
+# Custom CSS
 st.markdown("""
     <style>
     .stApp {
@@ -69,7 +70,10 @@ def get_master_data():
         v = str(res.get('version', '1'))
         resp = requests.get(res['secure_url'])
         df = pd.read_excel(io.BytesIO(resp.content))
+        
+        # LOGIKA CASE-INSENSITIVE: Paksa semua nama kolom menjadi HURUF KAPITAL
         df.columns = [str(c).strip().upper() for c in df.columns]
+        
         for col in df.columns:
             if col in ['QTY', 'RUPIAH']:
                 df[col] = df[col].apply(clean_numeric)
@@ -109,8 +113,6 @@ if 'page' not in st.session_state: st.session_state.page = "HOME"
 
 if st.session_state.page == "HOME":
     st.title("📊 Pareto NKL System")
-    
-    # MENU DAFTAR TERSEDIA DI SINI (TABS)
     tab_login, tab_daftar = st.tabs(["🔐 Masuk (Login)", "📝 Daftar Akun"])
     
     with tab_login:
@@ -126,7 +128,6 @@ if st.session_state.page == "HOME":
                 else: st.error("NIK atau Password salah!")
             except: st.error("Gagal memuat database user.")
         
-        # Tombol Lupa Password WhatsApp
         wa_api = "https://wa.me/6287725860048?text=Halo%20Admin%2C%20saya%20lupa%20password%20Pareto%20NKL%20NIK%3A%20"
         st.markdown(f'<a href="{wa_api}" target="_blank" style="text-decoration:none;"><button style="width:100%; padding:8px; border:1px solid white; background:transparent; color:white; border-radius:5px; cursor:pointer;">❓ Lupa Password? Hubungi Admin</button></a>', unsafe_allow_html=True)
 
@@ -135,25 +136,21 @@ if st.session_state.page == "HOME":
         d_nik = st.text_input("Masukkan NIK Baru:", max_chars=10, key="d_nik")
         d_pw = st.text_input("Buat Password:", type="password", key="d_pw")
         d_cpw = st.text_input("Konfirmasi Password:", type="password", key="d_cpw")
-        
         if st.button("DAFTAR SEKARANG", use_container_width=True):
             if d_nik and d_pw:
                 if d_pw == d_cpw:
                     try:
                         url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
                         db = requests.get(url_user).json()
-                        if d_nik in db:
-                            st.warning("NIK sudah terdaftar!")
+                        if d_nik in db: st.warning("NIK sudah terdaftar!")
                         else:
                             db[d_nik] = d_pw
-                            if update_user_db(db):
-                                st.success("✅ Akun berhasil dibuat! Silakan pindah ke Tab Masuk.")
-                            else: st.error("Gagal menyimpan ke Cloud.")
+                            if update_user_db(db): st.success("✅ Berhasil! Silakan Login.")
+                            else: st.error("Gagal simpan ke Cloud.")
                     except: st.error("Error database.")
                 else: st.error("Password tidak cocok!")
             else: st.warning("Data harus lengkap!")
 
-    st.write("")
     if st.button("🛡️ Admin Login", use_container_width=True):
         st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
@@ -174,7 +171,6 @@ elif st.session_state.page == "ADMIN_PANEL":
     
     with tab_rek:
         df_m_check, v_aktif = get_master_data()
-        st.write(f"Versi Aktif: {v_aktif}")
         target_v = st.text_input("Tarik Versi:", value=v_aktif)
         if st.button("Gabungkan Data Toko", use_container_width=True):
             res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_")
@@ -196,45 +192,55 @@ elif st.session_state.page == "ADMIN_PANEL":
     if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 5. USER INPUT (TIERED FILTER & COLUMN LOCK)
+# 5. USER INPUT (TIERED FILTER, NAMA TOKO & LABEL LOCK)
 # =================================================================
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Penjelasan Pareto")
     df_m, v_master = get_master_data()
     
     if df_m is not None:
-        # Dropdown AM
-        list_am = sorted(df_m['AM'].unique())
+        # LOGIKA CASE-INSENSITIVE PADA FILTER
+        # AM
+        list_am = sorted(df_m['AM'].astype(str).str.upper().unique())
         sel_am = st.selectbox("1. PILIH AM:", list_am)
         
-        # Dropdown KDTOKO berdasarkan AM
-        df_f_am = df_m[df_m['AM'] == sel_am]
-        list_toko = sorted(df_f_am['KDTOKO'].unique())
-        sel_toko = st.selectbox("2. PILIH KDTOKO:", list_toko)
+        # Filter data berdasarkan AM (Case-insensitive)
+        df_f_am = df_m[df_m['AM'].astype(str).str.upper() == sel_am]
         
-        # Label AS (Read Only)
-        info_as = df_f_am[df_f_am['KDTOKO'] == sel_toko]['AS'].iloc[0]
-        st.info(f"3. AS (Area Supervisor): {info_as}")
+        # NAMA TOKO (Menggunakan Nama Toko untuk pilihan)
+        list_nama_toko = sorted(df_f_am['NAMA TOKO'].astype(str).str.upper().unique())
+        sel_nama_toko = st.selectbox("2. PILIH NAMA TOKO:", list_nama_toko)
+        
+        # Data berdasarkan Nama Toko terpilih
+        df_selected = df_f_am[df_f_am['NAMA TOKO'].astype(str).str.upper() == sel_nama_toko]
+        
+        # Ambil Label KDTOKO & AS (Otomatis)
+        val_kdtoko = str(df_selected['KDTOKO'].iloc[0])
+        val_as = str(df_selected['AS'].iloc[0])
+        
+        c1, c2 = st.columns(2)
+        c1.metric("KDTOKO (Kode Toko):", val_kdtoko)
+        c2.metric("AS (Area Supervisor):", val_as)
 
         # Cek Data Existing
-        existing_df = get_existing_result(sel_toko, v_master)
+        existing_df = get_existing_result(val_kdtoko, v_master)
         if existing_df is not None:
             data_toko = existing_df.copy()
             st.success("Memuat data tersimpan.")
         else:
-            data_toko = df_f_am[df_f_am['KDTOKO'] == sel_toko].copy()
+            data_toko = df_selected.copy()
             if 'KETERANGAN' not in data_toko.columns: data_toko['KETERANGAN'] = ""
 
-        # Sembunyikan kolom sistem, tampilkan hanya PLU, DESC, QTY, RUPIAH, KETERANGAN
+        # Sembunyikan kolom master, tampilkan hanya PLU, DESC, QTY, RUPIAH, KETERANGAN
         disp_cols = ['PLU', 'DESC', 'QTY', 'RUPIAH', 'KETERANGAN']
         
-        # Konfigurasi: Semua kolom master di-lock (disabled: True)
+        # Lock Kolom Master
         config = {
             "PLU": st.column_config.TextColumn("PLU", disabled=True),
             "DESC": st.column_config.TextColumn("DESC", disabled=True),
             "QTY": st.column_config.NumberColumn("QTY", format="%.0f", disabled=True),
             "RUPIAH": st.column_config.NumberColumn("RUPIAH", format="%.0f", disabled=True),
-            "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True),
+            "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Alpha-Numerik)", required=True),
         }
 
         # Editor Tabel
@@ -243,17 +249,15 @@ elif st.session_state.page == "USER_INPUT":
             column_config=config,
             hide_index=True,
             use_container_width=True,
-            key=f"ed_{sel_toko}"
+            key=f"ed_{val_kdtoko}"
         )
         
         if st.button("🚀 Simpan Hasil Input", type="primary", use_container_width=True):
-            # Cek jika ada baris KETERANGAN yang masih kosong
             is_empty = edited_df['KETERANGAN'].apply(lambda x: str(x).strip() == "").any()
-            
             if is_empty:
-                st.error("⚠️ GAGAL: Seluruh baris kolom KETERANGAN wajib diisi penjelasan!")
+                st.error("⚠️ GAGAL: Seluruh kolom KETERANGAN wajib diisi!")
             else:
-                # Gabungkan data inputan dengan kolom master yang tadi disembunyikan
+                # Kembalikan kolom master yang disembunyikan
                 for col in data_toko.columns:
                     if col not in disp_cols:
                         edited_df[col] = data_toko[col].values
@@ -261,10 +265,10 @@ elif st.session_state.page == "USER_INPUT":
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf) as w: edited_df.to_excel(w, index=False)
                 
-                p_id = f"pareto_nkl/hasil/Hasil_{sel_toko}_v{v_master}.xlsx"
+                p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                 with st.spinner("Menyimpan..."):
                     cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                    st.success("✅ Data berhasil tersimpan di cloud!")
+                    st.success("✅ Data tersimpan!")
                     time.sleep(1); st.rerun()
     
     if st.button("Logout"): st.session_state.page = "HOME"; st.rerun()
