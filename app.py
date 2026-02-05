@@ -297,7 +297,7 @@ with tab_rek:
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
                 st.success(f"Rekap siap! Total {len(final_df)} baris data master.")
                 st.download_button("📥 Klik Download File Excel", out.getvalue(), f"Full_Rekap_{target_v}.xlsx")
-    with tab_mas:
+with tab_mas:
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
             old_df, _ = get_master_data()
@@ -309,7 +309,7 @@ with tab_rek:
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
             st.success("Master diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
-    with tab_usr:
+with tab_usr:
         st.subheader("Reset Password User")
         url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
         try:
@@ -324,7 +324,7 @@ with tab_rek:
             elif nik_manual: st.error("NIK tidak ditemukan.")
         except: pass
 
-    with tab_res:
+with tab_res:
         konfirmasi = st.text_input("Ketik 'KONFIRMASI' untuk reset:")
         if st.button("🔥 RESET HASIL INPUT", type="primary"):
             if konfirmasi == "KONFIRMASI":
