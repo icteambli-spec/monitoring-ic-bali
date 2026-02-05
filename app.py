@@ -325,11 +325,22 @@ elif st.session_state.page == "ADMIN_PANEL":
             old_df, _ = get_master_data()
             new_df = pd.read_excel(f_up)
             new_df.columns = [str(c).strip().upper() for c in new_df.columns]
+            
+            # Menggabungkan data master
             final_master = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PLU'], keep='last')
+            
+            # =========================================================
+            # SOLUSI: Kosongkan kolom KETERANGAN agar data lama tidak 
+            # mengunci di file Master setelah reset.
+            # =========================================================
+            if 'KETERANGAN' in final_master.columns:
+                final_master['KETERANGAN'] = ""
+            
             buf = io.BytesIO()
             with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            st.success("Master diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+            
+            st.success("Master diperbarui dan kolom keterangan dibersihkan!"); st.cache_data.clear(); time.sleep(3); st.rerun()
 
     with tab_usr:
         st.subheader("Reset Password User")
