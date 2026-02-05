@@ -136,8 +136,8 @@ if st.session_state.page == "HOME":
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Toko", total_t)
-        c2.metric("Sudah SO", sudah_t, f"{persen_t:.1%}")
-        c3.metric("Belum SO", belum_t, f"-{belum_t}", delta_color="inverse")
+        c2.metric("Sudah Input", sudah_t, f"{persen_t:.1%}")
+        c3.metric("Belum Input", belum_t, f"-{belum_t}", delta_color="inverse")
         
         st.write("---")
         
@@ -155,9 +155,9 @@ if st.session_state.page == "HOME":
             am_sum,
             column_config={
                 "AM": "AM",
-                "Target_Toko": "Target Toko SO",
-                "Sudah_Input": "Sudah SO",
-                "Belum_Input": "Belum SO",
+                "Target_Toko": "Target Toko Input",
+                "Sudah_Input": "Sudah Input",
+                "Belum_Input": "Belum Input",
                 "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
             },
             hide_index=True, use_container_width=True
@@ -177,9 +177,9 @@ if st.session_state.page == "HOME":
             as_sum,
             column_config={
                 "AS": "AS",
-                "Target_Toko": "Target Toko SO",
-                "Sudah_Input": "Sudah SO",
-                "Belum_Input": "Belum SO",
+                "Target_Toko": "Target Toko Input",
+                "Sudah_Input": "Sudah Input",
+                "Belum_Input": "Belum Input",
                 "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
             },
             hide_index=True, use_container_width=True
@@ -190,8 +190,8 @@ if st.session_state.page == "HOME":
         # Data Toko yang Belum Input
         df_belum_all = df_u[df_u['STATUS'] == 0].copy()
 
-        # 2. EXPANDER DETAIL BELUM SO PER AM
-        with st.expander("🔍 Detail Toko Belum SO Per AM"):
+        # 2. EXPANDER DETAIL BELUM INPUT PER AM
+        with st.expander("🔍 Detail Toko Belum INPUT Per AM"):
             if not df_belum_all.empty:
                 list_am_belum = sorted(df_belum_all['AM'].unique())
                 sel_am_det = st.selectbox("Pilih Area Manager (AM):", options=list_am_belum, key="sel_am_det")
@@ -200,10 +200,10 @@ if st.session_state.page == "HOME":
                 df_det_am.columns = ['Kode', 'Nama'] # Mengubah header sesuai gambar
                 st.dataframe(df_det_am, hide_index=True, use_container_width=True)
             else:
-                st.success("Semua toko di seluruh AM sudah SO!")
+                st.success("Semua toko di seluruh AM sudah Input!")
 
-        # 3. EXPANDER DETAIL BELUM SO PER AS
-        with st.expander("🔍 Detail Toko Belum SO Per AS"):
+        # 3. EXPANDER DETAIL BELUM INPUT PER AS
+        with st.expander("🔍 Detail Toko Belum INPUT Per AS"):
             if not df_belum_all.empty:
                 list_as_belum = sorted(df_belum_all['AS'].unique())
                 sel_as_det = st.selectbox("Pilih AS:", options=list_as_belum, key="sel_as_det")
@@ -212,7 +212,7 @@ if st.session_state.page == "HOME":
                 df_det_as.columns = ['Kode', 'Nama'] # Mengubah header sesuai gambar
                 st.dataframe(df_det_as, hide_index=True, use_container_width=True)
             else:
-                st.success("Semua toko di seluruh AS sudah SO!")
+                st.success("Semua toko di seluruh AS sudah Input!")
 
     st.write("---")
     # Bagian tab login dan daftar tetap di bawah tanpa perubahan fungsi
@@ -261,7 +261,7 @@ elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
     tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
     
-with tab_rek:
+    with tab_rek:
         df_m, v_aktif = get_master_data()
         st.info(f"Seri Data Saat Ini: {v_aktif}")
         target_v = st.text_input("Tarik Data Seri (MM-YYYY):", value=v_aktif)
@@ -319,7 +319,7 @@ with tab_rek:
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
                 st.success(f"Rekap siap! Total {len(final_df)} baris data master.")
                 st.download_button("📥 Klik Download File Excel", out.getvalue(), f"Full_Rekap_{target_v}.xlsx")
-with tab_mas:
+    with tab_mas:
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
             old_df, _ = get_master_data()
@@ -331,7 +331,7 @@ with tab_mas:
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
             st.success("Master diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
-with tab_usr:
+    with tab_usr:
         st.subheader("Reset Password User")
         url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
         try:
@@ -346,7 +346,7 @@ with tab_usr:
             elif nik_manual: st.error("NIK tidak ditemukan.")
         except: pass
 
-with tab_res:
+    with tab_res:
         konfirmasi = st.text_input("Ketik 'KONFIRMASI' untuk reset:")
         if st.button("🔥 RESET HASIL INPUT", type="primary"):
             if konfirmasi == "KONFIRMASI":
