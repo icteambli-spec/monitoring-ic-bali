@@ -333,7 +333,7 @@ with tab_res:
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
                 st.success("Dibersihkan!"); time.sleep(1); st.rerun()
 
-    if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
+if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
 # 5. USER INPUT
