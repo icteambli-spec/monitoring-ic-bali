@@ -117,7 +117,7 @@ def get_progress_data(df_m, version):
         return pd.DataFrame(), []
 
 # =================================================================
-# 3. ROUTING & HOME (PROGRES SESUAI GAMBAR)
+# 3. ROUTING & HOME (PROGRES URUTAN TERENDAH & EXPANDER TERPISAH)
 # =================================================================
 if 'page' not in st.session_state: st.session_state.page = "HOME"
 
@@ -136,64 +136,86 @@ if st.session_state.page == "HOME":
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Toko", total_t)
-        c2.metric("Sudah Input", sudah_t, f"{persen_t:.1%}")
-        c3.metric("Belum Input", belum_t, f"-{belum_t}", delta_color="inverse")
+        c2.metric("Sudah SO", sudah_t, f"{persen_t:.1%}")
+        c3.metric("Belum SO", belum_t, f"-{belum_t}", delta_color="inverse")
         
         st.write("---")
-        st.write("### 📊 Progres PER AM (Urutan Terendah di Atas)")
         
-        # Rekap AM
+        # Rekap AM (Urutan Terendah di Atas)
+        st.write("### 📊 Progres SO PER AM (Urutan Terendah di Atas)")
         am_sum = df_u.groupby('AM').agg(
             Target_Toko=('KDTOKO', 'count'),
             Sudah_Input=('STATUS', 'sum')
         ).reset_index()
         am_sum['Belum_Input'] = am_sum['Target_Toko'] - am_sum['Sudah_Input']
         am_sum['Progres_Val'] = (am_sum['Sudah_Input'] / am_sum['Target_Toko']).round(2)
-        am_sum = am_sum.sort_values('Progres_Val') # Terendah di atas
+        am_sum = am_sum.sort_values('Progres_Val') # Urutan terendah di atas
         
         st.dataframe(
             am_sum,
             column_config={
                 "AM": "AM",
-                "Target_Toko": "Target Toko",
-                "Sudah_Input": "Sudah",
-                "Belum_Input": "Belum",
+                "Target_Toko": "Target Toko SO",
+                "Sudah_Input": "Sudah SO",
+                "Belum_Input": "Belum SO",
                 "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
             },
             hide_index=True, use_container_width=True
         )
 
-        # Rekap AS
-        st.write("### 📊 Progres PER AS")
+        # Rekap AS (Urutan Terendah di Atas)
+        st.write("### 📊 Progres SO PER AS (Urutan Terendah di Atas)")
         as_sum = df_u.groupby('AS').agg(
             Target_Toko=('KDTOKO', 'count'),
             Sudah_Input=('STATUS', 'sum')
         ).reset_index()
         as_sum['Belum_Input'] = as_sum['Target_Toko'] - as_sum['Sudah_Input']
         as_sum['Progres_Val'] = (as_sum['Sudah_Input'] / as_sum['Target_Toko']).round(2)
-        as_sum = as_sum.sort_values('Progres_Val')
+        as_sum = as_sum.sort_values('Progres_Val') # Urutan terendah di atas (Permintaan Baru)
 
         st.dataframe(
             as_sum,
             column_config={
                 "AS": "AS",
-                "Target_Toko": "Target Toko",
-                "Sudah_Input": "Sudah",
-                "Belum_Input": "Belum",
+                "Target_Toko": "Target Toko SO",
+                "Sudah_Input": "Sudah SO",
+                "Belum_Input": "Belum SO",
                 "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
             },
             hide_index=True, use_container_width=True
         )
 
-        # 2. EXPANDER DETAIL BELUM INPUT
-        with st.expander("🔍 Lihat Detail Toko yang BELUM Input"):
-            df_belum = df_u[df_u['STATUS'] == 0][['AM', 'AS', 'KDTOKO', 'NAMA TOKO']].sort_values(['AM', 'AS'])
-            if not df_belum.empty:
-                st.dataframe(df_belum, hide_index=True, use_container_width=True)
+        st.write("---")
+
+        # Data Toko yang Belum Input
+        df_belum_all = df_u[df_u['STATUS'] == 0].copy()
+
+        # 2. EXPANDER DETAIL BELUM SO PER AM
+        with st.expander("🔍 Detail Toko Belum SO Per AM"):
+            if not df_belum_all.empty:
+                list_am_belum = sorted(df_belum_all['AM'].unique())
+                sel_am_det = st.selectbox("Pilih Area Manager (AM):", options=list_am_belum, key="sel_am_det")
+                
+                df_det_am = df_belum_all[df_belum_all['AM'] == sel_am_det][['KDTOKO', 'NAMA TOKO']]
+                df_det_am.columns = ['Kode', 'Nama'] # Mengubah header sesuai gambar
+                st.dataframe(df_det_am, hide_index=True, use_container_width=True)
             else:
-                st.success("Semua toko sudah melakukan input!")
+                st.success("Semua toko di seluruh AM sudah SO!")
+
+        # 3. EXPANDER DETAIL BELUM SO PER AS
+        with st.expander("🔍 Detail Toko Belum SO Per AS"):
+            if not df_belum_all.empty:
+                list_as_belum = sorted(df_belum_all['AS'].unique())
+                sel_as_det = st.selectbox("Pilih AS:", options=list_as_belum, key="sel_as_det")
+                
+                df_det_as = df_belum_all[df_belum_all['AS'] == sel_as_det][['KDTOKO', 'NAMA TOKO']]
+                df_det_as.columns = ['Kode', 'Nama'] # Mengubah header sesuai gambar
+                st.dataframe(df_det_as, hide_index=True, use_container_width=True)
+            else:
+                st.success("Semua toko di seluruh AS sudah SO!")
 
     st.write("---")
+    # Bagian tab login dan daftar tetap di bawah tanpa perubahan fungsi
     tab_login, tab_daftar = st.tabs(["🔐 Masuk", "📝 Daftar Akun"])
     with tab_login:
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
