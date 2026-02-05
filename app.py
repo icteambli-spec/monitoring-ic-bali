@@ -239,7 +239,7 @@ elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
     tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
     
-    with tab_rek:
+   with tab_rek:
         df_m, v_aktif = get_master_data()
         st.info(f"Seri Data Saat Ini: {v_aktif}")
         target_v = st.text_input("Tarik Data Seri (MM-YYYY):", value=v_aktif)
@@ -261,7 +261,6 @@ elif st.session_state.page == "ADMIN_PANEL":
                     
                     if combined_list:
                         combined_input = pd.concat(combined_list, ignore_index=True)
-                        # Pastikan kolom KETERANGAN ada sebelum difilter
                         cols_to_use = [c for c in ['KDTOKO', 'PLU', 'KETERANGAN'] if c in combined_input.columns]
                         input_data = combined_input[cols_to_use].copy()
                         input_data = input_data.drop_duplicates(subset=['KDTOKO', 'PLU'])
@@ -271,19 +270,33 @@ elif st.session_state.page == "ADMIN_PANEL":
                     input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
 
                 # 2. JOIN DENGAN MASTER (SINKRONISASI FULL)
-                final_df = df_m.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
+                # Simpan daftar kolom asli dari Master untuk re-order nantinya
+                master_cols_original = list(df_m.columns)
+
+                # Hapus kolom KETERANGAN dari master sebelum merge agar tidak terjadi KETERANGAN_x / KETERANGAN_y
+                df_m_for_merge = df_m.drop(columns=['KETERANGAN']) if 'KETERANGAN' in df_m.columns else df_m.copy()
+
+                # Merge Master dengan Hasil Input
+                final_df = df_m_for_merge.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
                 
-                # FIX: Cek keberadaan kolom KETERANGAN sebelum fillna
+                # Pastikan kolom KETERANGAN ada (jika tidak ada input sama sekali) dan bersihkan NaN
                 if 'KETERANGAN' not in final_df.columns:
                     final_df['KETERANGAN'] = ""
-                
                 final_df['KETERANGAN'] = final_df['KETERANGAN'].fillna("")
                 
+                # Susun ulang kolom agar kembali ke urutan Master asli
+                # Jika KETERANGAN adalah kolom baru (tidak ada di master awal), letakkan di akhir
+                if 'KETERANGAN' not in master_cols_original:
+                    final_columns_order = master_cols_original + ['KETERANGAN']
+                else:
+                    final_columns_order = master_cols_original
+                
+                final_df = final_df[final_columns_order]
+
                 out = io.BytesIO()
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
                 st.success(f"Rekap siap! Total {len(final_df)} baris data master.")
                 st.download_button("📥 Klik Download File Excel", out.getvalue(), f"Full_Rekap_{target_v}.xlsx")
-
     with tab_mas:
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
