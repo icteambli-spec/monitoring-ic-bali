@@ -36,16 +36,15 @@ st.markdown("""
         color: white !important; 
         text-shadow: 1px 1px 2px black; 
     }
-    div[data-testid="stDataEditor"] { 
+    div[data-testid="stDataEditor"], div[data-testid="stDataFrame"] { 
         background-color: rgba(255,255,255,0.05); 
         border-radius: 10px; padding: 10px; 
     }
-    .progress-card {
+    [data-testid="stMetric"] {
         background-color: rgba(255, 255, 255, 0.1);
         padding: 15px;
         border-radius: 10px;
         border: 1px solid rgba(255, 255, 255, 0.2);
-        margin-bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -99,65 +98,102 @@ def update_user_db(new_db):
         return True
     except: return False
 
-def get_progress_summary(df_m, version):
+def get_progress_data(df_m, version):
     try:
-        # Ambil daftar file yang ada di folder hasil untuk versi ini
         res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_", max_results=500)
         files = res.get('resources', [])
-        
-        # Ekstrak Kode Toko dari nama file: Hasil_KDTOKO_vMM-YYYY.xlsx
         finished_stores = []
         suffix = f"_v{version}.xlsx"
         for f in files:
-            p_id = f['public_id'].split('/')[-1] # Ambil nama file saja
+            p_id = f['public_id'].split('/')[-1]
             if p_id.endswith(suffix):
-                kdtoko = p_id.replace("Hasil_", "").replace(suffix, "")
-                finished_stores.append(kdtoko)
+                finished_stores.append(p_id.replace("Hasil_", "").replace(suffix, ""))
         
-        # Buat kolom status di Master
-        df_m['STATUS'] = df_m['KDTOKO'].apply(lambda x: 1 if x in finished_stores else 0)
+        df_unique = df_m.drop_duplicates(subset=['KDTOKO']).copy()
+        df_unique['STATUS'] = df_unique['KDTOKO'].apply(lambda x: 1 if x in finished_stores else 0)
         
-        # Ringkasan per AM (Unique Toko)
-        am_sum = df_m.drop_duplicates(subset=['KDTOKO']).groupby('AM').agg(
-            Total=('KDTOKO', 'count'),
-            Selesai=('STATUS', 'sum')
-        ).reset_index()
-        am_sum['%'] = (am_sum['Selesai'] / am_sum['Total'] * 100).round(1)
-        
-        # Ringkasan per AS (Unique Toko)
-        as_sum = df_m.drop_duplicates(subset=['KDTOKO']).groupby('AS').agg(
-            Total=('KDTOKO', 'count'),
-            Selesai=('STATUS', 'sum')
-        ).reset_index()
-        as_sum['%'] = (as_sum['Selesai'] / as_sum['Total'] * 100).round(1)
-        
-        return am_sum, as_sum
+        return df_unique, finished_stores
     except:
-        return pd.DataFrame(), pd.DataFrame()
+        return pd.DataFrame(), []
 
 # =================================================================
-# 3. ROUTING & HOME
+# 3. ROUTING & HOME (PROGRES SESUAI GAMBAR)
 # =================================================================
 if 'page' not in st.session_state: st.session_state.page = "HOME"
 
 if st.session_state.page == "HOME":
-    st.title("📊 Pareto NKL System")
+    st.title("📑 Sistem Penjelasan Pareto NKL")
     
-    # --- BARU: MONITORING PROGRES ---
-    st.write("### 📈 Monitoring Progres Pengisian")
     df_m_prog, v_prog = get_master_data()
     if df_m_prog is not None:
-        am_p, as_p = get_progress_summary(df_m_prog, v_prog)
+        df_u, finished_list = get_progress_data(df_m_prog, v_prog)
         
-        col_am, col_as = st.columns(2)
-        with col_am:
-            st.write(f"**Progres per AM ({v_prog})**")
-            st.dataframe(am_p, hide_index=True, use_container_width=True)
-        with col_as:
-            st.write(f"**Progres per AS ({v_prog})**")
-            st.dataframe(as_p, hide_index=True, use_container_width=True)
-    st.write("---")
+        # 1. METRIC ATAS
+        total_t = len(df_u)
+        sudah_t = df_u['STATUS'].sum()
+        belum_t = total_t - sudah_t
+        persen_t = (sudah_t / total_t) if total_t > 0 else 0
+        
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Toko", total_t)
+        c2.metric("Sudah Input", sudah_t, f"{persen_t:.1%}")
+        c3.metric("Belum Input", belum_t, f"-{belum_t}", delta_color="inverse")
+        
+        st.write("---")
+        st.write("### 📊 Progres PER AM (Urutan Terendah di Atas)")
+        
+        # Rekap AM
+        am_sum = df_u.groupby('AM').agg(
+            Target_Toko=('KDTOKO', 'count'),
+            Sudah_Input=('STATUS', 'sum')
+        ).reset_index()
+        am_sum['Belum_Input'] = am_sum['Target_Toko'] - am_sum['Sudah_Input']
+        am_sum['Progres_Val'] = (am_sum['Sudah_Input'] / am_sum['Target_Toko']).round(2)
+        am_sum = am_sum.sort_values('Progres_Val') # Terendah di atas
+        
+        st.dataframe(
+            am_sum,
+            column_config={
+                "AM": "AM",
+                "Target_Toko": "Target Toko",
+                "Sudah_Input": "Sudah",
+                "Belum_Input": "Belum",
+                "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
+            },
+            hide_index=True, use_container_width=True
+        )
 
+        # Rekap AS
+        st.write("### 📊 Progres PER AS")
+        as_sum = df_u.groupby('AS').agg(
+            Target_Toko=('KDTOKO', 'count'),
+            Sudah_Input=('STATUS', 'sum')
+        ).reset_index()
+        as_sum['Belum_Input'] = as_sum['Target_Toko'] - as_sum['Sudah_Input']
+        as_sum['Progres_Val'] = (as_sum['Sudah_Input'] / as_sum['Target_Toko']).round(2)
+        as_sum = as_sum.sort_values('Progres_Val')
+
+        st.dataframe(
+            as_sum,
+            column_config={
+                "AS": "AS",
+                "Target_Toko": "Target Toko",
+                "Sudah_Input": "Sudah",
+                "Belum_Input": "Belum",
+                "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)
+            },
+            hide_index=True, use_container_width=True
+        )
+
+        # 2. EXPANDER DETAIL BELUM INPUT
+        with st.expander("🔍 Lihat Detail Toko yang BELUM Input"):
+            df_belum = df_u[df_u['STATUS'] == 0][['AM', 'AS', 'KDTOKO', 'NAMA TOKO']].sort_values(['AM', 'AS'])
+            if not df_belum.empty:
+                st.dataframe(df_belum, hide_index=True, use_container_width=True)
+            else:
+                st.success("Semua toko sudah melakukan input!")
+
+    st.write("---")
     tab_login, tab_daftar = st.tabs(["🔐 Masuk", "📝 Daftar Akun"])
     with tab_login:
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
@@ -197,26 +233,40 @@ elif st.session_state.page == "ADMIN_AUTH":
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 4. ADMIN PANEL
+# 4. ADMIN PANEL (FULL MASTER REKAP)
 # =================================================================
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
     tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
     
     with tab_rek:
-        df_m_check, v_aktif = get_master_data()
+        df_m, v_aktif = get_master_data()
         st.info(f"Seri Data Saat Ini: {v_aktif}")
-        target_v = st.text_input("Tarik Data Berdasarkan Seri (MM-YYYY):", value=v_aktif)
-        if st.button("Gabung Data", use_container_width=True):
-            res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_")
-            filtered = [f for f in res.get('resources', []) if f"v{target_v}" in f['public_id']]
-            if filtered:
-                combined = [pd.read_excel(requests.get(f['secure_url']).url) for f in filtered]
-                final_df = pd.concat(combined, ignore_index=True)
+        target_v = st.text_input("Tarik Data Seri (MM-YYYY):", value=v_aktif)
+        
+        if st.button("📥 Download Gabungan (Full Master)", use_container_width=True):
+            with st.spinner("Menggabungkan data..."):
+                res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_")
+                filtered = [f for f in res.get('resources', []) if f"v{target_v}" in f['public_id']]
+                
+                # 1. Ambil semua input user yang ada
+                if filtered:
+                    combined_input = pd.concat([pd.read_excel(requests.get(f['secure_url']).url) for f in filtered], ignore_index=True)
+                    combined_input.columns = [str(c).upper() for c in combined_input.columns]
+                    # Ambil hanya KDTOKO, PRDCD, dan KETERANGAN untuk di-join
+                    input_data = combined_input[['KDTOKO', 'PLU', 'KETERANGAN']].copy()
+                    input_data = input_data.drop_duplicates(subset=['KDTOKO', 'PLU'])
+                else:
+                    input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
+
+                # 2. JOIN DENGAN MASTER (SINKRONISASI FULL)
+                final_df = df_m.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
+                final_df['KETERANGAN'] = final_df['KETERANGAN'].fillna("") # Yang belum input tetap blank
+                
                 out = io.BytesIO()
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
-                st.download_button("📥 Download Rekap", out.getvalue(), f"Rekap_{target_v}.xlsx")
-            else: st.warning(f"Belum ada data untuk seri {target_v}")
+                st.success(f"Rekap siap! Total {len(final_df)} baris data master.")
+                st.download_button("📥 Klik Download File Excel", out.getvalue(), f"Full_Rekap_{target_v}.xlsx")
 
     with tab_mas:
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
@@ -232,30 +282,27 @@ elif st.session_state.page == "ADMIN_PANEL":
 
     with tab_usr:
         st.subheader("Reset Password User")
+        url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
         try:
-            url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
             db_u = requests.get(url_user).json()
-            nik_manual = st.text_input("Ketik NIK User yang akan di-reset:", placeholder="Contoh: 20101234")
-            if nik_manual:
-                if nik_manual in db_u:
-                    st.success(f"User ditemukan: Akun NIK {nik_manual}")
-                    pass_baru = st.text_input("Masukkan Password Baru:", type="password")
-                    if st.button("Update Password"):
-                        if pass_baru:
-                            db_u[nik_manual] = pass_baru
-                            if update_user_db(db_u): st.success(f"Password NIK {nik_manual} berhasil diubah!")
-                        else: st.warning("Password baru tidak boleh kosong!")
-                else: st.error("NIK tidak ditemukan dalam database.")
-        except: st.error("Gagal muat database user.")
+            nik_manual = st.text_input("Ketik NIK User yang akan di-reset:")
+            if nik_manual and nik_manual in db_u:
+                st.success(f"User ditemukan: {nik_manual}")
+                pass_baru = st.text_input("Password Baru:", type="password")
+                if st.button("Update Password"):
+                    db_u[nik_manual] = pass_baru
+                    if update_user_db(db_u): st.success("Update Berhasil!")
+            elif nik_manual: st.error("NIK tidak ditemukan.")
+        except: pass
 
     with tab_res:
-        konfirmasi = st.text_input("Ketik 'KONFIRMASI' untuk reset hasil:")
+        konfirmasi = st.text_input("Ketik 'KONFIRMASI' untuk reset:")
         if st.button("🔥 RESET HASIL INPUT", type="primary"):
             if konfirmasi == "KONFIRMASI":
                 res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
                 p_ids = [f['public_id'] for f in res.get('resources', [])]
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
-                st.success("Hasil input dibersihkan!"); time.sleep(1); st.rerun()
+                st.success("Dibersihkan!"); time.sleep(1); st.rerun()
 
     if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
 
@@ -286,8 +333,7 @@ elif st.session_state.page == "USER_INPUT":
             if 'KETERANGAN' not in data_toko.columns: data_toko['KETERANGAN'] = ""
 
         original_cols = list(df_m.columns)
-        if 'KETERANGAN' not in original_cols: save_cols_order = original_cols + ['KETERANGAN']
-        else: save_cols_order = original_cols
+        save_cols_order = original_cols + (['KETERANGAN'] if 'KETERANGAN' not in original_cols else [])
 
         disp_cols = ['PLU', 'DESC', 'QTY', 'RUPIAH', 'KETERANGAN']
         config = {
