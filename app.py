@@ -40,6 +40,13 @@ st.markdown("""
         background-color: rgba(255,255,255,0.05); 
         border-radius: 10px; padding: 10px; 
     }
+    .progress-card {
+        background-color: rgba(255, 255, 255, 0.1);
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        margin-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -61,9 +68,7 @@ def clean_numeric(val):
 @st.cache_data(ttl=30)
 def get_master_data():
     try:
-        # 1. PERUBAHAN VERSI: Menggunakan format Bulan-Tahun saat ini (Contoh: 02-2026)
         v = datetime.now().strftime("%m-%Y") 
-        
         res = cloudinary.api.resource(MASTER_PATH, resource_type="raw", cache_control="no-cache")
         resp = requests.get(res['secure_url'])
         df = pd.read_excel(io.BytesIO(resp.content))
@@ -94,6 +99,42 @@ def update_user_db(new_db):
         return True
     except: return False
 
+def get_progress_summary(df_m, version):
+    try:
+        # Ambil daftar file yang ada di folder hasil untuk versi ini
+        res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_", max_results=500)
+        files = res.get('resources', [])
+        
+        # Ekstrak Kode Toko dari nama file: Hasil_KDTOKO_vMM-YYYY.xlsx
+        finished_stores = []
+        suffix = f"_v{version}.xlsx"
+        for f in files:
+            p_id = f['public_id'].split('/')[-1] # Ambil nama file saja
+            if p_id.endswith(suffix):
+                kdtoko = p_id.replace("Hasil_", "").replace(suffix, "")
+                finished_stores.append(kdtoko)
+        
+        # Buat kolom status di Master
+        df_m['STATUS'] = df_m['KDTOKO'].apply(lambda x: 1 if x in finished_stores else 0)
+        
+        # Ringkasan per AM (Unique Toko)
+        am_sum = df_m.drop_duplicates(subset=['KDTOKO']).groupby('AM').agg(
+            Total=('KDTOKO', 'count'),
+            Selesai=('STATUS', 'sum')
+        ).reset_index()
+        am_sum['%'] = (am_sum['Selesai'] / am_sum['Total'] * 100).round(1)
+        
+        # Ringkasan per AS (Unique Toko)
+        as_sum = df_m.drop_duplicates(subset=['KDTOKO']).groupby('AS').agg(
+            Total=('KDTOKO', 'count'),
+            Selesai=('STATUS', 'sum')
+        ).reset_index()
+        as_sum['%'] = (as_sum['Selesai'] / as_sum['Total'] * 100).round(1)
+        
+        return am_sum, as_sum
+    except:
+        return pd.DataFrame(), pd.DataFrame()
+
 # =================================================================
 # 3. ROUTING & HOME
 # =================================================================
@@ -101,6 +142,22 @@ if 'page' not in st.session_state: st.session_state.page = "HOME"
 
 if st.session_state.page == "HOME":
     st.title("📊 Pareto NKL System")
+    
+    # --- BARU: MONITORING PROGRES ---
+    st.write("### 📈 Monitoring Progres Pengisian")
+    df_m_prog, v_prog = get_master_data()
+    if df_m_prog is not None:
+        am_p, as_p = get_progress_summary(df_m_prog, v_prog)
+        
+        col_am, col_as = st.columns(2)
+        with col_am:
+            st.write(f"**Progres per AM ({v_prog})**")
+            st.dataframe(am_p, hide_index=True, use_container_width=True)
+        with col_as:
+            st.write(f"**Progres per AS ({v_prog})**")
+            st.dataframe(as_p, hide_index=True, use_container_width=True)
+    st.write("---")
+
     tab_login, tab_daftar = st.tabs(["🔐 Masuk", "📝 Daftar Akun"])
     with tab_login:
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
@@ -115,6 +172,7 @@ if st.session_state.page == "HOME":
                 else: st.error("NIK/Password salah!")
             except: st.error("Database user error.")
         st.markdown(f'<a href="https://wa.me/6287725860048" target="_blank" style="text-decoration:none;"><button style="width:100%; background:transparent; color:white; border:1px solid white; border-radius:5px; cursor:pointer; padding:5px;">❓ Lupa Password? Hubungi Admin</button></a>', unsafe_allow_html=True)
+    
     with tab_daftar:
         d_nik = st.text_input("NIK Baru:", max_chars=10, key="d_nik")
         d_pw = st.text_input("Password Baru:", type="password", key="d_pw")
@@ -128,6 +186,7 @@ if st.session_state.page == "HOME":
                     db[d_nik] = d_pw
                     if update_user_db(db): st.success("Pendaftaran Berhasil!")
             else: st.error("Data tidak valid.")
+    
     if st.button("🛡️ Admin Login", use_container_width=True): st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
 elif st.session_state.page == "ADMIN_AUTH":
@@ -172,14 +231,11 @@ elif st.session_state.page == "ADMIN_PANEL":
             st.success("Master diperbarui!"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
     with tab_usr:
-        # 2. PERUBAHAN UI: Reset Password menggunakan manual input NIK
         st.subheader("Reset Password User")
         try:
             url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
             db_u = requests.get(url_user).json()
-            
             nik_manual = st.text_input("Ketik NIK User yang akan di-reset:", placeholder="Contoh: 20101234")
-            
             if nik_manual:
                 if nik_manual in db_u:
                     st.success(f"User ditemukan: Akun NIK {nik_manual}")
@@ -187,11 +243,9 @@ elif st.session_state.page == "ADMIN_PANEL":
                     if st.button("Update Password"):
                         if pass_baru:
                             db_u[nik_manual] = pass_baru
-                            if update_user_db(db_u): 
-                                st.success(f"Password NIK {nik_manual} berhasil diubah!")
+                            if update_user_db(db_u): st.success(f"Password NIK {nik_manual} berhasil diubah!")
                         else: st.warning("Password baru tidak boleh kosong!")
-                else:
-                    st.error("NIK tidak ditemukan dalam database.")
+                else: st.error("NIK tidak ditemukan dalam database.")
         except: st.error("Gagal muat database user.")
 
     with tab_res:
