@@ -233,7 +233,7 @@ elif st.session_state.page == "ADMIN_AUTH":
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 4. ADMIN PANEL (FULL MASTER REKAP)
+# 4. ADMIN PANEL (REKAP - FIXED KEYERROR)
 # =================================================================
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
@@ -251,17 +251,33 @@ elif st.session_state.page == "ADMIN_PANEL":
                 
                 # 1. Ambil semua input user yang ada
                 if filtered:
-                    combined_input = pd.concat([pd.read_excel(requests.get(f['secure_url']).url) for f in filtered], ignore_index=True)
-                    combined_input.columns = [str(c).upper() for c in combined_input.columns]
-                    # Ambil hanya KDTOKO, PRDCD, dan KETERANGAN untuk di-join
-                    input_data = combined_input[['KDTOKO', 'PLU', 'KETERANGAN']].copy()
-                    input_data = input_data.drop_duplicates(subset=['KDTOKO', 'PLU'])
+                    combined_list = []
+                    for f in filtered:
+                        try:
+                            df_temp = pd.read_excel(requests.get(f['secure_url']).url)
+                            df_temp.columns = [str(c).upper().strip() for c in df_temp.columns]
+                            combined_list.append(df_temp)
+                        except: pass
+                    
+                    if combined_list:
+                        combined_input = pd.concat(combined_list, ignore_index=True)
+                        # Pastikan kolom KETERANGAN ada sebelum difilter
+                        cols_to_use = [c for c in ['KDTOKO', 'PLU', 'KETERANGAN'] if c in combined_input.columns]
+                        input_data = combined_input[cols_to_use].copy()
+                        input_data = input_data.drop_duplicates(subset=['KDTOKO', 'PLU'])
+                    else:
+                        input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
                 else:
                     input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
 
                 # 2. JOIN DENGAN MASTER (SINKRONISASI FULL)
                 final_df = df_m.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
-                final_df['KETERANGAN'] = final_df['KETERANGAN'].fillna("") # Yang belum input tetap blank
+                
+                # FIX: Cek keberadaan kolom KETERANGAN sebelum fillna
+                if 'KETERANGAN' not in final_df.columns:
+                    final_df['KETERANGAN'] = ""
+                
+                final_df['KETERANGAN'] = final_df['KETERANGAN'].fillna("")
                 
                 out = io.BytesIO()
                 with pd.ExcelWriter(out) as w: final_df.to_excel(w, index=False)
