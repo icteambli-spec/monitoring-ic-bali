@@ -320,27 +320,59 @@ elif st.session_state.page == "ADMIN_PANEL":
                 st.success(f"Rekap siap! Total {len(final_df)} baris data master.")
                 st.download_button("📥 Klik Download File Excel", out.getvalue(), f"Full_Rekap_{target_v}.xlsx")
     with tab_mas:
+        st.info("Opsi 3: Master akan bertambah (Incremental). Toko lama tidak terhapus.")
         f_up = st.file_uploader("Upload Data Toko Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
-            old_df, _ = get_master_data()
-            new_df = pd.read_excel(f_up)
-            new_df.columns = [str(c).strip().upper() for c in new_df.columns]
+            with st.spinner("Menggabungkan data..."):
+                old_df, _ = get_master_data()
+                new_df = pd.read_excel(f_up)
+                new_df.columns = [str(c).strip().upper() for c in new_df.columns]
+                
+                if old_df is not None:
+                    final_master = pd.concat([old_df, new_df], ignore_index=True)
+                    final_master = final_master.drop_duplicates(subset=['KDTOKO', 'PLU'], keep='last')
+                else:
+                    final_master = new_df
+                
+                # Pastikan Master bersih dari data keterangan lama
+                if 'KETERANGAN' in final_master.columns:
+                    final_master['KETERANGAN'] = ""
+                
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
+                cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
+                st.success(f"Master diperbarui! Total: {len(final_master)} baris data."); st.cache_data.clear(); time.sleep(1); st.rerun()
+
+        st.divider()
+        st.subheader("🗑️ Hapus Master Aktif")
+        with st.container(border=True):
+            st.write("Gunakan fitur ini jika salah upload Master.")
+            # Opsi apakah hasil input user ikut dihapus atau tidak
+            opsi_hapus_hasil = st.checkbox("Ikut hapus seluruh hasil input user berjalan?", value=False)
             
-            # Menggabungkan data master
-            final_master = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PLU'], keep='last')
+            konfirmasi_del = st.text_input("Ketik 'HAPUS' untuk menghapus Master Aktif:", key="del_master_confirm")
             
-            # =========================================================
-            # SOLUSI: Kosongkan kolom KETERANGAN agar data lama tidak 
-            # mengunci di file Master setelah reset.
-            # =========================================================
-            if 'KETERANGAN' in final_master.columns:
-                final_master['KETERANGAN'] = ""
-            
-            buf = io.BytesIO()
-            with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
-            cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            
-            st.success("Master diperbarui dan kolom keterangan dibersihkan!"); st.cache_data.clear(); time.sleep(3); st.rerun()
+            if st.button("🔥 Eksekusi Hapus Master", type="primary"):
+                if konfirmasi_del == "HAPUS":
+                    with st.spinner("Memproses penghapusan..."):
+                        # 1. Hapus file Master Aktif
+                        cloudinary.uploader.destroy(MASTER_PATH, resource_type="raw")
+                        
+                        # 2. Kondisi jika hasil input juga harus dihapus
+                        if opsi_hapus_hasil:
+                            res_del = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
+                            p_ids_del = [f['public_id'] for f in res_del.get('resources', [])]
+                            if p_ids_del: 
+                                cloudinary.api.delete_resources(p_ids_del, resource_type="raw")
+                            st.success("Master dan seluruh hasil input berhasil dihapus!")
+                        else:
+                            st.success("Master dihapus. Hasil input user tetap tersimpan di cloud.")
+                        
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                else:
+                    st.error("Kata konfirmasi 'HAPUS' salah!")
 
     with tab_usr:
         st.subheader("Reset Password User")
@@ -364,7 +396,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                 res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
                 p_ids = [f['public_id'] for f in res.get('resources', [])]
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
-                st.success("Dibersihkan!"); time.sleep(1); st.rerun()
+                st.success("Dibersihkan!"); time.sleep(3); st.rerun()
 
 if st.button("Logout Admin"): st.session_state.page = "HOME"; st.rerun()
 
