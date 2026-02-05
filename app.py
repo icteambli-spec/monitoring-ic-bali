@@ -356,6 +356,6 @@ elif st.session_state.page == "USER_INPUT":
                 with pd.ExcelWriter(buf) as w: final_save_df.to_excel(w, index=False)
                 p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                 cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                st.success("✅ Tersimpan!"); time.sleep(1); st.rerun()
+                st.success("✅ INPUTAN TERSIMPAN!"); time.sleep(3); st.rerun()
 
     if st.button("Logout"): st.session_state.page = "HOME"; st.rerun()
