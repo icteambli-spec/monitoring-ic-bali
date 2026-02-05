@@ -239,7 +239,7 @@ elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
     tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
     
-   with tab_rek:
+with tab_rek:
         df_m, v_aktif = get_master_data()
         st.info(f"Seri Data Saat Ini: {v_aktif}")
         target_v = st.text_input("Tarik Data Seri (MM-YYYY):", value=v_aktif)
