@@ -65,12 +65,11 @@ def clean_numeric(val):
         return float(s)
     except: return 0.0
 
-@st.cache_data(ttl=2) # TTL sangat singkat untuk Master
+@st.cache_data(ttl=2) 
 def get_master_data():
     try:
         v = datetime.now().strftime("%m-%Y") 
         res = cloudinary.api.resource(MASTER_PATH, resource_type="raw", cache_control="no-cache")
-        # Bypass Cloudinary CDN Cache dengan timestamp unik
         url_master = f"{res['secure_url']}?t={int(time.time())}"
         resp = requests.get(url_master)
         df = pd.read_excel(io.BytesIO(resp.content))
@@ -80,15 +79,20 @@ def get_master_data():
                 df[col] = df[col].apply(clean_numeric)
             else:
                 df[col] = df[col].fillna("")
+        
+        # Jaminan: Selalu kosongkan kolom KETERANGAN yang ada di Master
+        if 'KETERANGAN' in df.columns:
+            df['KETERANGAN'] = ""
+            
         return df, v
     except: return None, datetime.now().strftime("%m-%Y")
 
 def get_existing_result(toko_code, version):
     try:
         p_id = f"pareto_nkl/hasil/Hasil_{toko_code}_v{version}.xlsx"
-        # Bypass CDN Cache dengan timestamp unik
-        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}?t={int(time.time())}"
-        resp = requests.get(url, timeout=5)
+        # Gunakan cache buster yang sangat unik agar Cloudinary CDN dipaksa refresh
+        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}?cache={int(time.time())}"
+        resp = requests.get(url, timeout=3)
         if resp.status_code == 200:
             df_res = pd.read_excel(io.BytesIO(resp.content))
             df_res.columns = [str(c).strip().upper() for c in df_res.columns]
@@ -107,6 +111,7 @@ def update_user_db(new_db):
 
 def get_progress_data(df_m, version):
     try:
+        # Tambahkan t= agar progres selalu update
         res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_", max_results=500)
         files = res.get('resources', [])
         finished_stores = []
@@ -118,17 +123,14 @@ def get_progress_data(df_m, version):
         
         df_unique = df_m.drop_duplicates(subset=['KDTOKO']).copy()
         df_unique['STATUS'] = df_unique['KDTOKO'].apply(lambda x: 1 if x in finished_stores else 0)
-        
         return df_unique, finished_stores
-    except:
-        return pd.DataFrame(), []
+    except: return pd.DataFrame(), []
 
 # =================================================================
 # 3. ROUTING & HOME
 # =================================================================
 if 'page' not in st.session_state: 
     st.session_state.page = "HOME"
-    st.cache_data.clear() # Bersihkan cache saat web pertama kali dibuka
 
 if st.session_state.page == "HOME":
     st.title("📑 Sistem Penjelasan Pareto NKL")
@@ -185,7 +187,7 @@ if st.session_state.page == "HOME":
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
         l_pw = st.text_input("Password:", type="password", key="l_pw")
         if st.button("LOG IN", type="primary", use_container_width=True):
-            st.cache_data.clear() # Paksa ambil database user terbaru
+            st.cache_data.clear()
             try:
                 url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
                 db = requests.get(url_user).json()
@@ -210,14 +212,17 @@ if st.session_state.page == "HOME":
                     if update_user_db(db): st.success("Pendaftaran Berhasil!")
             else: st.error("Data tidak valid.")
     
-    if st.button("🛡️ Admin Login", use_container_width=True): st.session_state.page = "ADMIN_AUTH"; st.rerun()
+    if st.button("🛡️ Admin Login", use_container_width=True): 
+        st.session_state.page = "ADMIN_AUTH"
+        st.rerun()
 
 elif st.session_state.page == "ADMIN_AUTH":
     pw = st.text_input("Password Admin:", type="password")
     if st.button("Masuk Admin"):
         if pw == "icnkl034": 
-            st.cache_data.clear() # Bersihkan cache saat masuk Admin
-            st.session_state.page = "ADMIN_PANEL"; st.rerun()
+            st.cache_data.clear()
+            st.session_state.page = "ADMIN_PANEL"
+            st.rerun()
         else: st.error("Salah!")
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
@@ -250,6 +255,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                         input_data = combined_input[cols_to_use].copy().drop_duplicates(subset=['KDTOKO', 'PLU'])
                     else: input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
                 else: input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
+
                 master_cols_original = list(df_m.columns)
                 df_m_for_merge = df_m.drop(columns=['KETERANGAN']) if 'KETERANGAN' in df_m.columns else df_m.copy()
                 final_df = df_m_for_merge.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
@@ -272,7 +278,7 @@ elif st.session_state.page == "ADMIN_PANEL":
             buf = io.BytesIO()
             with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            st.cache_data.clear() # Bersihkan cache setelah update Master
+            st.cache_data.clear()
             st.success("Master diperbarui!"); time.sleep(3); st.rerun()
 
         st.divider()
@@ -288,7 +294,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                         p_ids = [f['public_id'] for f in res_del.get('resources', [])]
                         if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
                     st.cache_data.clear()
-                    st.success("Berhasil dihapus!"); time.sleep(1); st.rerun()
+                    st.success("Berhasil dihapus!"); time.sleep(3); st.rerun()
 
     with tab_usr:
         st.subheader("Reset Password User")
@@ -313,9 +319,11 @@ elif st.session_state.page == "ADMIN_PANEL":
                 p_ids = [f['public_id'] for f in res.get('resources', [])]
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
                 st.cache_data.clear() 
-                st.success("Dibersihkan!"); time.sleep(2); st.rerun()
+                st.success("Dibersihkan!"); time.sleep(3); st.rerun()
 
-    if st.button("🚪 Logout Admin", use_container_width=True): 
+    # PERBAIKAN PROBLEM 2: Tombol Logout Admin berada di dalam kategori ADMIN_PANEL
+    st.write("---")
+    if st.button("🚪 Logout Admin", use_container_width=True, key="btn_logout_admin"): 
         st.cache_data.clear()
         st.session_state.page = "HOME"
         st.rerun()
@@ -338,24 +346,23 @@ elif st.session_state.page == "USER_INPUT":
         c1, c2 = st.columns(2)
         c1.metric("KDTOKO:", val_kdtoko); c2.metric("AS:", val_as)
 
+        # PROBLEM TQFV: Fungsi ini sekarang dipaksa mengabaikan cache agar jika sudah dihapus tidak muncul lagi
         existing_df = get_existing_result(val_kdtoko, v_master)
         if existing_df is not None:
             data_toko = existing_df.copy()
             st.success(f"Memuat data tersimpan (Seri {v_master}).")
         else:
             data_toko = df_selected.copy()
-            if 'KETERANGAN' not in data_toko.columns: data_toko['KETERANGAN'] = ""
+            # Jaminan kolom keterangan kosong jika file hasil tidak ditemukan
+            data_toko['KETERANGAN'] = ""
 
-        # FIX TIPE DATA: Mencegah StreamlitAPIException
+        # FIX TIPE DATA
         for col in ['PLU', 'DESC', 'KETERANGAN']:
             if col in data_toko.columns:
                 data_toko[col] = data_toko[col].astype(str).replace(['nan', 'None', 'NaN'], '')
         for col in ['QTY', 'RUPIAH']:
             if col in data_toko.columns:
                 data_toko[col] = pd.to_numeric(data_toko[col], errors='coerce').fillna(0)
-
-        original_cols = list(df_m.columns)
-        save_cols_order = original_cols if 'KETERANGAN' in original_cols else original_cols + ['KETERANGAN']
 
         disp_cols = ['PLU', 'DESC', 'QTY', 'RUPIAH', 'KETERANGAN']
         config = {
@@ -366,8 +373,7 @@ elif st.session_state.page == "USER_INPUT":
             "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True),
         }
         
-        # FIX PROBLEM 1: Key editor menggunakan hash konten data aslinya.
-        # Jika data master berubah (misal PRDCD ganti), hash akan berubah dan memaksa tabel me-refresh isinya.
+        # Hash data untuk reset editor jika master berganti
         data_hash = hashlib.md5(pd.util.hash_pandas_object(data_toko[disp_cols]).values).hexdigest()
         edited_df = st.data_editor(data_toko[disp_cols], column_config=config, hide_index=True, use_container_width=True, key=f"ed_{val_kdtoko}_{data_hash}")
         
@@ -375,16 +381,20 @@ elif st.session_state.page == "USER_INPUT":
             if edited_df['KETERANGAN'].apply(lambda x: str(x).strip() == "").any():
                 st.error("⚠️ Semua kolom KETERANGAN wajib diisi!")
             else:
+                # Ambil urutan kolom dari master utama
+                original_cols = list(df_m.columns)
+                save_cols_order = original_cols if 'KETERANGAN' in original_cols else original_cols + ['KETERANGAN']
+                
                 data_toko['KETERANGAN'] = edited_df['KETERANGAN'].values
                 final_save_df = data_toko[save_cols_order]
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf) as w: final_save_df.to_excel(w, index=False)
                 p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                 cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                st.cache_data.clear() # Penting agar progres di Home langsung update
+                st.cache_data.clear() 
                 st.success("✅ INPUTAN TERSIMPAN!"); time.sleep(3); st.rerun()
 
-    if st.button("Logout"): 
+    if st.button("🚪 Keluar (Logout)", use_container_width=True, key="btn_logout_user"): 
         st.cache_data.clear()
         st.session_state.page = "HOME"
         st.rerun()
