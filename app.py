@@ -455,12 +455,6 @@ elif st.session_state.page == "USER_INPUT":
             use_container_width=True, 
             key=f"ed_{val_kdtoko}_{len(data_toko)}" # Tips: tambahkan len agar key selalu unik
         )
-
-        # Pastikan kolom numerik benar-benar angka
-        for col in ['QTY', 'RUPIAH']:
-            if col in data_toko.columns:
-                data_toko[col] = pd.to_numeric(data_toko[col], errors='coerce').fillna(0)
-        # -----------------------------------------------------------------
         edited_df = st.data_editor(data_toko[disp_cols], column_config=config, hide_index=True, use_container_width=True, key=f"ed_{val_kdtoko}")
         
         if st.button("🚀 Simpan Hasil Input", type="primary", use_container_width=True):
