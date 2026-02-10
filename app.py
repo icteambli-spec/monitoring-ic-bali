@@ -155,14 +155,14 @@ if st.session_state.page == "HOME":
         am_sum['Belum_Input'] = am_sum['Target_Toko'] - am_sum['Sudah_Input']
         am_sum['Progres_Val'] = (am_sum['Sudah_Input'] / am_sum['Target_Toko']).round(2)
         am_sum = am_sum.sort_values('Progres_Val')
-        st.dataframe(am_sum, column_config={"AM": "AM", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        st.dataframe(am_sum, column_config={"AM": "AM", "Target_Toko": "Target Toko Input", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
         st.write("### 📊 Progres SO PER AS (Urutan Terendah di Atas)")
         as_sum = df_u.groupby('AS').agg(Target_Toko=('KDTOKO', 'count'), Sudah_Input=('STATUS', 'sum')).reset_index()
         as_sum['Belum_Input'] = as_sum['Target_Toko'] - as_sum['Sudah_Input']
         as_sum['Progres_Val'] = (as_sum['Sudah_Input'] / as_sum['Target_Toko']).round(2)
         as_sum = as_sum.sort_values('Progres_Val')
-        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko Input", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
         st.write("---")
         df_belum_all = df_u[df_u['STATUS'] == 0].copy()
