@@ -79,20 +79,14 @@ def get_master_data():
                 df[col] = df[col].apply(clean_numeric)
             else:
                 df[col] = df[col].fillna("")
-        
-        # Jaminan: Selalu kosongkan kolom KETERANGAN yang ada di Master
-        if 'KETERANGAN' in df.columns:
-            df['KETERANGAN'] = ""
-            
         return df, v
     except: return None, datetime.now().strftime("%m-%Y")
 
 def get_existing_result(toko_code, version):
     try:
         p_id = f"pareto_nkl/hasil/Hasil_{toko_code}_v{version}.xlsx"
-        # Gunakan cache buster yang sangat unik agar Cloudinary CDN dipaksa refresh
-        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}?cache={int(time.time())}"
-        resp = requests.get(url, timeout=3)
+        url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}?t={int(time.time())}"
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200:
             df_res = pd.read_excel(io.BytesIO(resp.content))
             df_res.columns = [str(c).strip().upper() for c in df_res.columns]
@@ -111,7 +105,6 @@ def update_user_db(new_db):
 
 def get_progress_data(df_m, version):
     try:
-        # Tambahkan t= agar progres selalu update
         res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/Hasil_", max_results=500)
         files = res.get('resources', [])
         finished_stores = []
@@ -129,8 +122,7 @@ def get_progress_data(df_m, version):
 # =================================================================
 # 3. ROUTING & HOME
 # =================================================================
-if 'page' not in st.session_state: 
-    st.session_state.page = "HOME"
+if 'page' not in st.session_state: st.session_state.page = "HOME"
 
 if st.session_state.page == "HOME":
     st.title("📑 Sistem Penjelasan Pareto NKL")
@@ -138,9 +130,7 @@ if st.session_state.page == "HOME":
     df_m_prog, v_prog = get_master_data()
     if df_m_prog is not None:
         df_u, finished_list = get_progress_data(df_m_prog, v_prog)
-        
-        total_t = len(df_u)
-        sudah_t = df_u['STATUS'].sum()
+        total_t, sudah_t = len(df_u), df_u['STATUS'].sum()
         belum_t = total_t - sudah_t
         persen_t = (sudah_t / total_t) if total_t > 0 else 0
         
@@ -150,19 +140,19 @@ if st.session_state.page == "HOME":
         c3.metric("Belum Input", belum_t, f"-{belum_t}", delta_color="inverse")
         
         st.write("---")
-        st.write("### 📊 Progres SO PER AM (Urutan Terendah di Atas)")
+        st.write("### 📊 Progres Input PER AM (Urutan Terendah di Atas)")
         am_sum = df_u.groupby('AM').agg(Target_Toko=('KDTOKO', 'count'), Sudah_Input=('STATUS', 'sum')).reset_index()
         am_sum['Belum_Input'] = am_sum['Target_Toko'] - am_sum['Sudah_Input']
         am_sum['Progres_Val'] = (am_sum['Sudah_Input'] / am_sum['Target_Toko']).round(2)
         am_sum = am_sum.sort_values('Progres_Val')
         st.dataframe(am_sum, column_config={"AM": "AM", "Target_Toko": "Target Toko Input", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
-        st.write("### 📊 Progres SO PER AS (Urutan Terendah di Atas)")
+        st.write("### 📊 Progres Input PER AS (Urutan Terendah di Atas)")
         as_sum = df_u.groupby('AS').agg(Target_Toko=('KDTOKO', 'count'), Sudah_Input=('STATUS', 'sum')).reset_index()
         as_sum['Belum_Input'] = as_sum['Target_Toko'] - as_sum['Sudah_Input']
         as_sum['Progres_Val'] = (as_sum['Sudah_Input'] / as_sum['Target_Toko']).round(2)
         as_sum = as_sum.sort_values('Progres_Val')
-        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko Input", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
         st.write("---")
         df_belum_all = df_u[df_u['STATUS'] == 0].copy()
@@ -187,7 +177,6 @@ if st.session_state.page == "HOME":
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
         l_pw = st.text_input("Password:", type="password", key="l_pw")
         if st.button("LOG IN", type="primary", use_container_width=True):
-            st.cache_data.clear()
             try:
                 url_user = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{USER_DB}?t={int(time.time())}"
                 db = requests.get(url_user).json()
@@ -212,17 +201,13 @@ if st.session_state.page == "HOME":
                     if update_user_db(db): st.success("Pendaftaran Berhasil!")
             else: st.error("Data tidak valid.")
     
-    if st.button("🛡️ Admin Login", use_container_width=True): 
-        st.session_state.page = "ADMIN_AUTH"
-        st.rerun()
+    if st.button("🛡️ Admin Login", use_container_width=True): st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
 elif st.session_state.page == "ADMIN_AUTH":
     pw = st.text_input("Password Admin:", type="password")
     if st.button("Masuk Admin"):
         if pw == "icnkl034": 
-            st.cache_data.clear()
-            st.session_state.page = "ADMIN_PANEL"
-            st.rerun()
+            st.session_state.page = "ADMIN_PANEL"; st.rerun()
         else: st.error("Salah!")
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
@@ -255,7 +240,6 @@ elif st.session_state.page == "ADMIN_PANEL":
                         input_data = combined_input[cols_to_use].copy().drop_duplicates(subset=['KDTOKO', 'PLU'])
                     else: input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
                 else: input_data = pd.DataFrame(columns=['KDTOKO', 'PLU', 'KETERANGAN'])
-
                 master_cols_original = list(df_m.columns)
                 df_m_for_merge = df_m.drop(columns=['KETERANGAN']) if 'KETERANGAN' in df_m.columns else df_m.copy()
                 final_df = df_m_for_merge.merge(input_data, on=['KDTOKO', 'PLU'], how='left')
@@ -279,7 +263,7 @@ elif st.session_state.page == "ADMIN_PANEL":
             with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
             st.cache_data.clear()
-            st.success("Master diperbarui!"); time.sleep(3); st.rerun()
+            st.success("Master diperbarui!"); time.sleep(1); st.rerun()
 
         st.divider()
         st.subheader("🗑️ Hapus Master Aktif")
@@ -294,7 +278,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                         p_ids = [f['public_id'] for f in res_del.get('resources', [])]
                         if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
                     st.cache_data.clear()
-                    st.success("Berhasil dihapus!"); time.sleep(3); st.rerun()
+                    st.success("Berhasil dihapus!"); time.sleep(1); st.rerun()
 
     with tab_usr:
         st.subheader("Reset Password User")
@@ -307,7 +291,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                 pass_baru = st.text_input("Password Baru:", type="password")
                 if st.button("Update Password"):
                     db_u[nik_manual] = pass_baru
-                    if update_user_db(db_u): st.cache_data.clear(); st.success("Berhasil!"); st.rerun()
+                    if update_user_db(db_u): st.success("Berhasil!"); st.rerun()
             elif nik_manual: st.error("NIK tidak ditemukan.")
         except: pass
 
@@ -319,9 +303,9 @@ elif st.session_state.page == "ADMIN_PANEL":
                 p_ids = [f['public_id'] for f in res.get('resources', [])]
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
                 st.cache_data.clear() 
-                st.success("Dibersihkan!"); time.sleep(3); st.rerun()
+                st.success("Dibersihkan!"); time.sleep(2); st.rerun()
 
-    # PERBAIKAN PROBLEM 2: Tombol Logout Admin berada di dalam kategori ADMIN_PANEL
+    # FIX PROBLEM 2: Tombol Logout Admin berada di dalam kategori ADMIN_PANEL
     st.write("---")
     if st.button("🚪 Logout Admin", use_container_width=True, key="btn_logout_admin"): 
         st.cache_data.clear()
@@ -329,12 +313,13 @@ elif st.session_state.page == "ADMIN_PANEL":
         st.rerun()
 
 # =================================================================
-# 5. USER INPUT
+# 5. USER INPUT (FIX SINKRONISASI DATA LAMA)
 # =================================================================
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Pareto")
     df_m, v_master = get_master_data()
     if df_m is not None:
+        # --- Filter AM & Toko ---
         list_am = sorted(df_m['AM'].astype(str).str.upper().unique())
         sel_am = st.selectbox("1. PILIH AM:", list_am)
         df_f_am = df_m[df_m['AM'].astype(str).str.upper() == sel_am]
@@ -346,24 +331,49 @@ elif st.session_state.page == "USER_INPUT":
         c1, c2 = st.columns(2)
         c1.metric("KDTOKO:", val_kdtoko); c2.metric("AS:", val_as)
 
-        # PROBLEM TQFV: Fungsi ini sekarang dipaksa mengabaikan cache agar jika sudah dihapus tidak muncul lagi
+        # --- PROSES SINKRONISASI (MERGE MASTER + CLOUD) ---
         existing_df = get_existing_result(val_kdtoko, v_master)
+        
+        # 1. Siapkan Data Master terbaru (sebagai pondasi)
+        data_toko_final = df_selected.copy()
+        # Pastikan PLU di Master adalah String & tidak ada spasi
+        data_toko_final['PLU'] = data_toko_final['PLU'].astype(str).str.strip()
+
         if existing_df is not None:
-            data_toko = existing_df.copy()
-            st.success(f"Memuat data tersimpan (Seri {v_master}).")
-        else:
-            data_toko = df_selected.copy()
-            # Jaminan kolom keterangan kosong jika file hasil tidak ditemukan
-            data_toko['KETERANGAN'] = ""
+            # 2. Siapkan Data Lama dari Cloud
+            cloud_input = existing_df.copy()
+            # Bersihkan nama kolom & paksa PLU ke string untuk kecocokan 100%
+            cloud_input.columns = [str(c).upper().strip() for c in cloud_input.columns]
+            
+            if 'KETERANGAN' in cloud_input.columns:
+                # Ambil hanya PLU dan KETERANGAN, hapus duplikat PLU
+                cloud_data = cloud_input[['PLU', 'KETERANGAN']].copy()
+                cloud_data['PLU'] = cloud_data['PLU'].astype(str).str.strip()
+                cloud_data = cloud_data.drop_duplicates(subset=['PLU'], keep='last')
+                
+                # 3. Hapus kolom KETERANGAN di Master agar tidak jadi KETERANGAN_x
+                if 'KETERANGAN' in data_toko_final.columns:
+                    data_toko_final = data_toko_final.drop(columns=['KETERANGAN'])
+                
+                # 4. Gabungkan (Left Join): Master + Keterangan dari Cloud
+                data_toko_final = data_toko_final.merge(cloud_data, on='PLU', how='left')
+                st.success(f"✅ Sinkronisasi Berhasil: Isian lama untuk Seri {v_master} telah dimuat.")
+        
+        # Jaminan: Jika tidak ada data lama atau PLU baru, kolom KETERANGAN tetap ada tapi kosong
+        if 'KETERANGAN' not in data_toko_final.columns: 
+            data_toko_final['KETERANGAN'] = ""
+        data_toko_final['KETERANGAN'] = data_toko_final['KETERANGAN'].fillna("")
 
-        # FIX TIPE DATA
+        # --- CLEANING DATA UNTUK EDITOR ---
         for col in ['PLU', 'DESC', 'KETERANGAN']:
-            if col in data_toko.columns:
-                data_toko[col] = data_toko[col].astype(str).replace(['nan', 'None', 'NaN'], '')
+            if col in data_toko_final.columns:
+                data_toko_final[col] = data_toko_final[col].astype(str).replace(['nan', 'None', 'NaN'], '')
+        
         for col in ['QTY', 'RUPIAH']:
-            if col in data_toko.columns:
-                data_toko[col] = pd.to_numeric(data_toko[col], errors='coerce').fillna(0)
+            if col in data_toko_final.columns:
+                data_toko_final[col] = pd.to_numeric(data_toko_final[col], errors='coerce').fillna(0)
 
+        # --- TAMPILAN EDITOR ---
         disp_cols = ['PLU', 'DESC', 'QTY', 'RUPIAH', 'KETERANGAN']
         config = {
             "PLU": st.column_config.TextColumn("PLU", disabled=True),
@@ -373,28 +383,39 @@ elif st.session_state.page == "USER_INPUT":
             "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True),
         }
         
-        # Hash data untuk reset editor jika master berganti
-        data_hash = hashlib.md5(pd.util.hash_pandas_object(data_toko[disp_cols]).values).hexdigest()
-        edited_df = st.data_editor(data_toko[disp_cols], column_config=config, hide_index=True, use_container_width=True, key=f"ed_{val_kdtoko}_{data_hash}")
+        # Gunakan hash data agar editor reset jika master berganti
+        data_hash = hashlib.md5(pd.util.hash_pandas_object(data_toko_final[disp_cols]).values).hexdigest()
+        edited_df = st.data_editor(
+            data_toko_final[disp_cols], 
+            column_config=config, 
+            hide_index=True, 
+            use_container_width=True, 
+            key=f"ed_{val_kdtoko}_{data_hash}"
+        )
         
         if st.button("🚀 Simpan Hasil Input", type="primary", use_container_width=True):
             if edited_df['KETERANGAN'].apply(lambda x: str(x).strip() == "").any():
                 st.error("⚠️ Semua kolom KETERANGAN wajib diisi!")
             else:
-                # Ambil urutan kolom dari master utama
-                original_cols = list(df_m.columns)
-                save_cols_order = original_cols if 'KETERANGAN' in original_cols else original_cols + ['KETERANGAN']
+                # Ambil urutan kolom asli dari master (NO, KDTOKO, NAMA TOKO, AM, AS, PLU, DESC, QTY, RUPIAH)
+                original_cols = [c for c in df_m.columns if c != 'KETERANGAN']
+                # Tambahkan KETERANGAN di paling akhir
+                save_cols_order = original_cols + ['KETERANGAN']
                 
-                data_toko['KETERANGAN'] = edited_df['KETERANGAN'].values
-                final_save_df = data_toko[save_cols_order]
+                # Masukkan hasil edit user ke dataframe final
+                data_toko_final['KETERANGAN'] = edited_df['KETERANGAN'].values
+                final_save_df = data_toko_final[save_cols_order]
+                
                 buf = io.BytesIO()
-                with pd.ExcelWriter(buf) as w: final_save_df.to_excel(w, index=False)
+                with pd.ExcelWriter(buf, engine='openpyxl') as w: 
+                    final_save_df.to_excel(w, index=False)
+                
                 p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                 cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
                 st.cache_data.clear() 
-                st.success("✅ INPUTAN TERSIMPAN!"); time.sleep(3); st.rerun()
+                st.success("✅ DATA TERSIMPAN!"); time.sleep(1); st.rerun()
 
-    if st.button("🚪 Keluar (Logout)", use_container_width=True, key="btn_logout_user"): 
+    if st.button("🚪 Keluar (Logout)", use_container_width=True): 
         st.cache_data.clear()
         st.session_state.page = "HOME"
         st.rerun()
