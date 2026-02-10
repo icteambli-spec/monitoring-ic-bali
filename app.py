@@ -146,8 +146,8 @@ if st.session_state.page == "HOME":
         
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Toko", total_t)
-        c2.metric("Sudah SO", sudah_t, f"{persen_t:.1%}")
-        c3.metric("Belum SO", belum_t, f"-{belum_t}", delta_color="inverse")
+        c2.metric("Sudah Input", sudah_t, f"{persen_t:.1%}")
+        c3.metric("Belum Input", belum_t, f"-{belum_t}", delta_color="inverse")
         
         st.write("---")
         st.write("### 📊 Progres SO PER AM (Urutan Terendah di Atas)")
@@ -155,25 +155,25 @@ if st.session_state.page == "HOME":
         am_sum['Belum_Input'] = am_sum['Target_Toko'] - am_sum['Sudah_Input']
         am_sum['Progres_Val'] = (am_sum['Sudah_Input'] / am_sum['Target_Toko']).round(2)
         am_sum = am_sum.sort_values('Progres_Val')
-        st.dataframe(am_sum, column_config={"AM": "AM", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah SO", "Belum_Input": "Belum SO", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        st.dataframe(am_sum, column_config={"AM": "AM", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
         st.write("### 📊 Progres SO PER AS (Urutan Terendah di Atas)")
         as_sum = df_u.groupby('AS').agg(Target_Toko=('KDTOKO', 'count'), Sudah_Input=('STATUS', 'sum')).reset_index()
         as_sum['Belum_Input'] = as_sum['Target_Toko'] - as_sum['Sudah_Input']
         as_sum['Progres_Val'] = (as_sum['Sudah_Input'] / as_sum['Target_Toko']).round(2)
         as_sum = as_sum.sort_values('Progres_Val')
-        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah SO", "Belum_Input": "Belum SO", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        st.dataframe(as_sum, column_config={"AS": "AS", "Target_Toko": "Target Toko SO", "Sudah_Input": "Sudah Input", "Belum_Input": "Belum Input", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
         st.write("---")
         df_belum_all = df_u[df_u['STATUS'] == 0].copy()
-        with st.expander("🔍 Detail Toko Belum SO Per AM"):
+        with st.expander("🔍 Detail Toko Belum Input Per AM"):
             if not df_belum_all.empty:
                 list_am_belum = sorted(df_belum_all['AM'].unique())
                 sel_am_det = st.selectbox("Pilih AM:", options=list_am_belum, key="sel_am_det")
                 df_det_am = df_belum_all[df_belum_all['AM'] == sel_am_det][['KDTOKO', 'NAMA TOKO']]
                 df_det_am.columns = ['Kode', 'Nama']
                 st.dataframe(df_det_am, hide_index=True, use_container_width=True)
-        with st.expander("🔍 Detail Toko Belum SO Per AS"):
+        with st.expander("🔍 Detail Toko Belum Input Per AS"):
             if not df_belum_all.empty:
                 list_as_belum = sorted(df_belum_all['AS'].unique())
                 sel_as_det = st.selectbox("Pilih AS:", options=list_as_belum, key="sel_as_det")
