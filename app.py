@@ -54,12 +54,16 @@ USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
 MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
 
 # =================================================================
-# 2. FUNGSI CORE & CACHE FIX
+# 2. FUNGSI CORE & CACHE FIX (IMPROVED)
 # =================================================================
 
 def clear_all_caches():
-    """Fungsi untuk membersihkan semua cache Streamlit secara paksa."""
+    """Fungsi untuk membersihkan semua cache Streamlit dan session state."""
     st.cache_data.clear()
+    # Bersihkan session state yang mungkin menyimpan data lama
+    keys_to_delete = [k for k in st.session_state.keys() if 'existing_result' in k or 'data_toko' in k]
+    for key in keys_to_delete:
+        del st.session_state[key]
 
 def clean_numeric(val):
     if pd.isna(val) or val == "": return 0.0
@@ -74,13 +78,12 @@ def clean_numeric(val):
 def get_master_data():
     try:
         v = datetime.now().strftime("%m-%Y") 
-        # Tambahkan timestamp unik untuk bypass cache browser/CDN
         timestamp = int(time.time())
         res = cloudinary.api.resource(MASTER_PATH, resource_type="raw", invalidate=True)
         url_master = f"{res['secure_url']}?t={timestamp}"
         
         resp = requests.get(url_master)
-        resp.raise_for_status() # Pastikan request berhasil
+        resp.raise_for_status()
         
         df = pd.read_excel(io.BytesIO(resp.content))
         df.columns = [str(c).strip().upper() for c in df.columns]
@@ -91,22 +94,43 @@ def get_master_data():
                 df[col] = df[col].fillna("")
         return df, v
     except Exception as e: 
-        # Jika file tidak ada atau error, kembalikan DF kosong agar tidak muncul data lama
         return pd.DataFrame(), datetime.now().strftime("%m-%Y")
 
+@st.cache_data(ttl=2)  # Cache hanya 2 detik untuk data hasil input
 def get_existing_result(toko_code, version):
+    """
+    Mengambil hasil input yang sudah ada dari Cloudinary.
+    Dengan cache TTL 2 detik untuk memastikan data selalu fresh.
+    """
     try:
         p_id = f"pareto_nkl/hasil/Hasil_{toko_code}_v{version}.xlsx"
-        # Tambahkan timestamp unik
         timestamp = int(time.time())
         url = f"https://res.cloudinary.com/{st.secrets['cloud_name']}/raw/upload/v1/{p_id}?t={timestamp}"
+        
         resp = requests.get(url, timeout=5)
-        if resp.status_code == 200:
-            df_res = pd.read_excel(io.BytesIO(resp.content))
-            df_res.columns = [str(c).strip().upper() for c in df_res.columns]
-            return df_res
-    except: pass
-    return None
+        
+        # Jika status code bukan 200, file tidak ditemukan
+        if resp.status_code != 200:
+            return None
+        
+        df_res = pd.read_excel(io.BytesIO(resp.content))
+        df_res.columns = [str(c).strip().upper() for c in df_res.columns]
+        return df_res
+    except Exception as e:
+        # Jika ada error (termasuk 404), return None
+        return None
+
+def validate_file_exists_in_cloudinary(toko_code, version):
+    """
+    Validasi tambahan: Cek apakah file benar-benar ada di Cloudinary.
+    Ini untuk memastikan file tidak hanya ada di cache tapi juga di server.
+    """
+    try:
+        p_id = f"pareto_nkl/hasil/Hasil_{toko_code}_v{version}.xlsx"
+        cloudinary.api.resource(p_id, resource_type="raw")
+        return True
+    except:
+        return False
 
 def update_user_db(new_db):
     try:
@@ -114,7 +138,7 @@ def update_user_db(new_db):
             io.BytesIO(json.dumps(new_db).encode()), 
             resource_type="raw", public_id=USER_DB, overwrite=True, invalidate=True
         )
-        clear_all_caches() # Bersihkan cache setelah update user
+        clear_all_caches()
         return True
     except: return False
 
@@ -285,7 +309,7 @@ elif st.session_state.page == "ADMIN_PANEL":
             buf = io.BytesIO()
             with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
             cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-            clear_all_caches() # FIX CACHE
+            clear_all_caches()
             st.success("Master diperbarui!"); time.sleep(1); st.rerun()
 
         st.divider()
@@ -300,7 +324,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                         res_del = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
                         p_ids = [f['public_id'] for f in res_del.get('resources', [])]
                         if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
-                    clear_all_caches() # FIX CACHE
+                    clear_all_caches()
                     st.success("Berhasil dihapus!"); time.sleep(1); st.rerun()
 
     with tab_usr:
@@ -315,7 +339,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                 if st.button("Update Password"):
                     db_u[nik_manual] = pass_baru
                     if update_user_db(db_u): 
-                        clear_all_caches() # FIX CACHE
+                        clear_all_caches()
                         st.success("Berhasil!"); st.rerun()
             elif nik_manual: st.error("NIK tidak ditemukan.")
         except: pass
@@ -327,7 +351,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                 res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
                 p_ids = [f['public_id'] for f in res.get('resources', [])]
                 if p_ids: cloudinary.api.delete_resources(p_ids, resource_type="raw")
-                clear_all_caches() # FIX CACHE
+                clear_all_caches()
                 st.success("Dibersihkan!"); time.sleep(2); st.rerun()
 
     st.write("---")
@@ -337,7 +361,7 @@ elif st.session_state.page == "ADMIN_PANEL":
         st.rerun()
 
 # =================================================================
-# 5. USER INPUT
+# 5. USER INPUT (IMPROVED WITH VALIDATION)
 # =================================================================
 elif st.session_state.page == "USER_INPUT":
     st.title("📋 Input Pareto")
@@ -354,11 +378,23 @@ elif st.session_state.page == "USER_INPUT":
         if not df_selected.empty:
             val_kdtoko, val_as = str(df_selected['KDTOKO'].iloc[0]), str(df_selected['AS'].iloc[0])
             
-            c1, c2 = st.columns(2)
-            c1.metric("KDTOKO:", val_kdtoko); c2.metric("AS:", val_as)
+            c1, c2, c3 = st.columns([2, 2, 1])
+            c1.metric("KDTOKO:", val_kdtoko)
+            c2.metric("AS:", val_as)
+            with c3:
+                if st.button("🔄 Refresh", key="btn_refresh_data", help="Klik untuk refresh data dari cloud"):
+                    clear_all_caches()
+                    st.rerun()
 
-            # --- PROSES SINKRONISASI ---
+            # --- PROSES SINKRONISASI DENGAN VALIDASI ---
             existing_df = get_existing_result(val_kdtoko, v_master)
+            
+            # Validasi tambahan: Cek apakah file benar-benar ada di Cloudinary
+            if existing_df is not None:
+                if not validate_file_exists_in_cloudinary(val_kdtoko, v_master):
+                    # File tidak ada di Cloudinary, set existing_df ke None
+                    existing_df = None
+            
             data_toko_final = df_selected.copy()
             data_toko_final['PLU'] = data_toko_final['PLU'].astype(str).str.strip()
 
@@ -425,7 +461,7 @@ elif st.session_state.page == "USER_INPUT":
                     
                     p_id = f"pareto_nkl/hasil/Hasil_{val_kdtoko}_v{v_master}.xlsx"
                     cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=p_id, overwrite=True, invalidate=True)
-                    clear_all_caches() # FIX CACHE
+                    clear_all_caches()
                     st.success("✅ DATA TERSIMPAN!"); time.sleep(1); st.rerun()
     else:
         st.error("Data Master tidak ditemukan. Silakan hubungi Admin untuk mengunggah Master Data.")
