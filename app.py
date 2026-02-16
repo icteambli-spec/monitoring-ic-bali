@@ -272,7 +272,7 @@ elif st.session_state.page == "ADMIN_AUTH":
 
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
-    tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset"])
+    tab_rek, tab_mas, tab_usr, tab_res = st.tabs(["📊 Rekap", "📤 Master", "👤 Kelola User", "🔥 Reset Hasil Input"])
     
     with tab_rek:
         df_m_rek, v_aktif_rek = get_master_data()
@@ -354,7 +354,7 @@ elif st.session_state.page == "ADMIN_PANEL":
 
     with tab_res:
         st.warning("Reset Folder Hasil Input")
-        if st.button("🔥 RESET HASIL", type="primary"):
+        if st.button("🔥 RESET HASIL INPUT TANPA HAPUS MASTER", type="primary"):
             res_res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
             pids_res = [f['public_id'] for f in res_res.get('resources', [])]
             if pids_res: cloudinary.api.delete_resources(pids_res, resource_type="raw")
