@@ -327,7 +327,7 @@ elif st.session_state.page == "ADMIN_PANEL":
                     # Pesan Dinamis
                     if master_aktif_exists: st.success("✅ Master sukses diperbarui")
                     else: st.success("✅ Master baru berhasil diupload")
-                    clear_all_caches(); time.sleep(2); st.rerun()
+                    clear_all_caches(); time.sleep(2.5); st.rerun()
 
         st.divider()
         st.subheader("🗑️ Hapus Master Aktif")
