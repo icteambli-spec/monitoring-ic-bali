@@ -226,21 +226,21 @@ if st.session_state.page == "HOME":
         df_belum_all = df_u[df_u['STATUS'] == 0].copy()
         
         # Expander Sesuai Skrip Inti (SO)
-        with st.expander("🔍 Detail Toko Belum SO Per AM"):
+        with st.expander("🔍 Detail Toko Belum Input Per AM"):
             if not df_belum_all.empty:
                 sel_am_det = st.selectbox("Pilih Area Manager (AM):", options=sorted(df_belum_all['AM'].unique()), key="sel_am_det")
                 df_det_am = df_belum_all[df_belum_all['AM'] == sel_am_det][['KDTOKO', 'NAMA TOKO']]
                 df_det_am.columns = ['Kode', 'Nama']
                 st.dataframe(df_det_am, hide_index=True, use_container_width=True)
-            else: st.success("Semua toko sudah SO!")
+            else: st.success("Semua toko sudah Input!")
 
-        with st.expander("🔍 Detail Toko Belum SO Per AS"):
+        with st.expander("🔍 Detail Toko Belum Input Per AS"):
             if not df_belum_all.empty:
                 sel_as_det = st.selectbox("Pilih AS:", options=sorted(df_belum_all['AS'].unique()), key="sel_as_det")
                 df_det_as = df_belum_all[df_belum_all['AS'] == sel_as_det][['KDTOKO', 'NAMA TOKO']]
                 df_det_as.columns = ['Kode', 'Nama']
                 st.dataframe(df_det_as, hide_index=True, use_container_width=True)
-            else: st.success("Semua toko sudah SO!")
+            else: st.success("Semua toko sudah Input!")
 
     st.write("---")
     tab_login, tab_daftar = st.tabs(["🔐 Masuk", "📝 Daftar Akun"])
