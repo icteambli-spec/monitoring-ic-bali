@@ -28,11 +28,10 @@ st.set_page_config(page_title="Pareto NKL System", layout="wide")
 USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
 MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
 MT_CONFIG = "pareto_nkl/config/maintenance_config.json"
-# PERMINTAAN 4: Link gambar maintenance (Silakan ganti link ini)
-MAINTENANCE_IMAGE = "https://res.cloudinary.com/dydpottpm/image/upload/v1772461285/Bugs_Bunny_In_Prison_GIF_-_Prison_Jail_Bugs_Bunny_Prison_-_Discover_Share_GIFs_pq0pez.gif"
+MAINTENANCE_IMAGE = "https://res.cloudinary.com/dydpottpm/image/upload/v1769698444/What_is_Fraud__Definition_and_Examples_1_yck2yg.jpg"
 
 # =================================================================
-# 2. FUNGSI CORE, MAINTENANCE & PENGUATAN LOGIN
+# 2. FUNGSI CORE & MAINTENANCE (RESTORASI SKRIP INTI)
 # =================================================================
 
 def get_maintenance_status():
@@ -179,54 +178,69 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =================================================================
-# 3. ROUTING & MAINTENANCE LOGIC (PERMINTAAN 4)
+# 3. ROUTING & MAINTENANCE (PERMINTAAN 4)
 # =================================================================
 if 'page' not in st.session_state: st.session_state.page = "HOME"
 
-# Check Maintenance Mode secara Real-time
-is_mt_active = get_maintenance_status()
+# Check Maintenance Mode Real-time
+is_mt = get_maintenance_status()
 
-if is_mt_active and st.session_state.page not in ["ADMIN_AUTH", "ADMIN_PANEL"]:
+if is_mt and st.session_state.page not in ["ADMIN_AUTH", "ADMIN_PANEL"]:
     st.image(MAINTENANCE_IMAGE, use_container_width=True)
     st.error("### 🛠️ Mohon Maaf, Web sedang Maintenance")
-    st.info("Sistem sedang dalam perbaikan berkala. Harap hubungi Admin atau coba lagi nanti.")
-    if st.button("🛡️ Admin Login"): 
-        st.session_state.page = "ADMIN_AUTH"
-        st.rerun()
+    st.info("Kami sedang melakukan perbaikan sistem. Silakan coba lagi nanti.")
+    if st.button("🛡️ Admin Login"): st.session_state.page = "ADMIN_AUTH"; st.rerun()
     st.stop()
 
-# --- HALAMAN HOME (FUNGSI PENUH SKRIP INTI) ---
+# --- HALAMAN HOME (RESTORASI SKRIP INTI) ---
 if st.session_state.page == "HOME":
     st.title("📑 Sistem Penjelasan Pareto NKL")
     df_m_prog, v_prog = get_master_data()
     if not df_m_prog.empty:
         df_u, finished_list = get_progress_data(df_m_prog, v_prog)
         
+        # Metric Sesuai Skrip Inti (SO)
         total_t, sudah_t = len(df_u), df_u['STATUS'].sum()
+        belum_t = total_t - sudah_t
         persen_t = (sudah_t / total_t) if total_t > 0 else 0
         c1, c2, c3 = st.columns(3)
         c1.metric("Total Toko", total_t)
         c2.metric("Sudah SO", sudah_t, f"{persen_t:.1%}")
-        c3.metric("Belum SO", total_t - sudah_t, delta_color="inverse")
-        
+        c3.metric("Belum SO", belum_t, f"-{belum_t}", delta_color="inverse")
         st.write("---")
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.write("### 📊 Progres SO PER AM (Urutan Terendah)")
-            am_sum = df_u.groupby('AM').agg(Target=('KDTOKO', 'count'), Selesai=('STATUS', 'sum')).reset_index()
-            am_sum['Belum'] = am_sum['Target'] - am_sum['Selesai']
-            am_sum['Progres_Val'] = (am_sum['Selesai'] / am_sum['Target']).round(2)
-            st.dataframe(am_sum.sort_values('Progres_Val'), column_config={"Progres_Val": st.column_config.ProgressColumn("Progres", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
-        with col_b:
-            st.write("### 📊 Progres SO PER AS (Urutan Terendah)")
-            as_sum = df_u.groupby('AS').agg(Target=('KDTOKO', 'count'), Selesai=('STATUS', 'sum')).reset_index()
-            as_sum['Belum'] = as_sum['Target'] - as_sum['Selesai']
-            as_sum['Progres_Val'] = (as_sum['Selesai'] / as_sum['Target']).round(2)
-            st.dataframe(as_sum.sort_values('Progres_Val'), column_config={"Progres_Val": st.column_config.ProgressColumn("Progres", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+        
+        # Progres Tabel Sesuai Skrip Inti (SO)
+        st.write("### 📊 Progres SO PER AM (Urutan Terendah di Atas)")
+        am_sum = df_u.groupby('AM').agg(Target_Toko_SO=('KDTOKO', 'count'), Sudah_SO=('STATUS', 'sum')).reset_index()
+        am_sum['Belum_SO'] = am_sum['Target_Toko_SO'] - am_sum['Sudah_SO']
+        am_sum['Progres_Val'] = (am_sum['Sudah_SO'] / am_sum['Target_Toko_SO']).round(2)
+        st.dataframe(am_sum.sort_values('Progres_Val'), column_config={"Target_Toko_SO":"Target Toko SO", "Sudah_SO":"Sudah SO", "Belum_SO":"Belum SO", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
 
-        with st.expander("🔍 Detail Toko Belum SO (AM/AS)"):
-            df_belum = df_u[df_u['STATUS'] == 0][['AM', 'AS', 'KDTOKO', 'NAMA TOKO']].sort_values(['AM', 'AS'])
-            st.dataframe(df_belum, hide_index=True, use_container_width=True)
+        st.write("### 📊 Progres SO PER AS (Urutan Terendah di Atas)")
+        as_sum = df_u.groupby('AS').agg(Target_Toko_SO=('KDTOKO', 'count'), Sudah_SO=('STATUS', 'sum')).reset_index()
+        as_sum['Belum_SO'] = as_sum['Target_Toko_SO'] - as_sum['Sudah_SO']
+        as_sum['Progres_Val'] = (as_sum['Sudah_SO'] / as_sum['Target_Toko_SO']).round(2)
+        st.dataframe(as_sum.sort_values('Progres_Val'), column_config={"Target_Toko_SO":"Target Toko SO", "Sudah_SO":"Sudah SO", "Belum_SO":"Belum SO", "Progres_Val": st.column_config.ProgressColumn("Progres", format="%.2f", min_value=0, max_value=1)}, hide_index=True, use_container_width=True)
+
+        st.write("---")
+        df_belum_all = df_u[df_u['STATUS'] == 0].copy()
+        
+        # Expander Sesuai Skrip Inti (SO)
+        with st.expander("🔍 Detail Toko Belum SO Per AM"):
+            if not df_belum_all.empty:
+                sel_am_det = st.selectbox("Pilih Area Manager (AM):", options=sorted(df_belum_all['AM'].unique()), key="sel_am_det")
+                df_det_am = df_belum_all[df_belum_all['AM'] == sel_am_det][['KDTOKO', 'NAMA TOKO']]
+                df_det_am.columns = ['Kode', 'Nama']
+                st.dataframe(df_det_am, hide_index=True, use_container_width=True)
+            else: st.success("Semua toko sudah SO!")
+
+        with st.expander("🔍 Detail Toko Belum SO Per AS"):
+            if not df_belum_all.empty:
+                sel_as_det = st.selectbox("Pilih AS:", options=sorted(df_belum_all['AS'].unique()), key="sel_as_det")
+                df_det_as = df_belum_all[df_belum_all['AS'] == sel_as_det][['KDTOKO', 'NAMA TOKO']]
+                df_det_as.columns = ['Kode', 'Nama']
+                st.dataframe(df_det_as, hide_index=True, use_container_width=True)
+            else: st.success("Semua toko sudah SO!")
 
     st.write("---")
     tab_login, tab_daftar = st.tabs(["🔐 Masuk", "📝 Daftar Akun"])
@@ -234,10 +248,11 @@ if st.session_state.page == "HOME":
         l_nik = st.text_input("NIK:", max_chars=10, key="l_nik")
         l_pw = st.text_input("Password:", type="password", key="l_pw")
         if st.button("LOG IN", type="primary", use_container_width=True):
-            db = get_user_db_safe()
+            db = get_user_db_safe() # Penguatan Login
             if db and l_nik in db and db[l_nik] == l_pw:
                 st.session_state.user_nik, st.session_state.page = l_nik, "USER_INPUT"; st.rerun()
-            else: st.error("NIK/Password salah atau Koneksi DB terputus.")
+            elif db is None: st.error("Database user error. Mohon klik login kembali.")
+            else: st.error("NIK/Password salah!")
         st.markdown(f'<a href="https://wa.me/6287725860048" target="_blank" style="text-decoration:none;"><button style="width:100%; background:transparent; color:white; border:1px solid white; border-radius:5px; cursor:pointer; padding:5px;">❓ Lupa Password? Hubungi Admin</button></a>', unsafe_allow_html=True)
     
     with tab_daftar:
@@ -246,12 +261,12 @@ if st.session_state.page == "HOME":
         d_cpw = st.text_input("Konfirmasi Password:", type="password", key="d_cpw")
         if st.button("DAFTAR", use_container_width=True):
             if d_nik and d_pw == d_cpw:
-                db_reg = get_user_db_safe()
-                if db_reg and d_nik in db_reg: st.warning("NIK sudah ada.")
+                db_r = get_user_db_safe()
+                if db_r and d_nik in db_r: st.warning("NIK sudah ada.")
                 else:
-                    db_reg[d_nik] = d_pw
-                    if update_user_db(db_reg): st.success("Akun berhasil dibuat! Silakan Login.")
-            else: st.error("Data tidak valid atau password tidak cocok.")
+                    db_r[d_nik] = d_pw
+                    if update_user_db(db_r): st.success("Pendaftaran Berhasil!")
+            else: st.error("Data tidak valid.")
     
     if st.button("🛡️ Admin Login", use_container_width=True): st.session_state.page = "ADMIN_AUTH"; st.rerun()
 
@@ -259,11 +274,11 @@ elif st.session_state.page == "ADMIN_AUTH":
     pw_adm = st.text_input("Password Admin:", type="password")
     if st.button("Masuk Admin"):
         if pw_adm == "icnkl034": st.cache_data.clear(); st.session_state.page = "ADMIN_PANEL"; st.rerun()
-        else: st.error("Password Admin Salah!")
+        else: st.error("Salah!")
     if st.button("Kembali"): st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
-# 4. ADMIN PANEL (FULL LOGIC: PERMINTAAN 3 & 5)
+# 4. ADMIN PANEL (RESTORASI HAPUS MASTER & PERMINTAAN 3, 5)
 # =================================================================
 elif st.session_state.page == "ADMIN_PANEL":
     st.title("🛡️ Admin Panel")
@@ -271,19 +286,18 @@ elif st.session_state.page == "ADMIN_PANEL":
     
     with tab_rek:
         df_m_rek, v_aktif_rek = get_master_data()
-        # PERMINTAAN 3: Input Periode Rekap
+        # PERMINTAAN 3: Pilih bulan rekap
         st.info(f"Seri Data Saat Ini: {v_aktif_rek}")
         target_v = st.text_input("Pilih Periode Rekap (MM-YYYY):", value=v_aktif_rek)
         
-        if st.button("📥 Download Gabungan Item Minus (Full Toko)", use_container_width=True):
+        if st.button("📥 Download Full Master Rekap (Item Minus Only)", use_container_width=True):
             with st.spinner("Menggabungkan data..."):
-                res_cloud = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
-                filtered_f = [f for f in res_cloud.get('resources', []) if f"v{target_v}" in f['public_id']]
-                
+                res_rek = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
+                filtered_rek = [f for f in res_rek.get('resources', []) if f"v{target_v}" in f['public_id']]
                 combined_in = pd.DataFrame(columns=['KDTOKO', 'PRDCD', 'KETERANGAN'])
-                if filtered_f:
+                if filtered_rek:
                     inputs_list = []
-                    for f in filtered_f:
+                    for f in filtered_rek:
                         try:
                             df_t = pd.read_excel(f"{f['secure_url']}?t={int(time.time())}")
                             df_t.columns = [str(c).upper().strip() for c in df_t.columns]
@@ -291,83 +305,89 @@ elif st.session_state.page == "ADMIN_PANEL":
                         except: pass
                     if inputs_list: combined_in = pd.concat(inputs_list, ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PRDCD'])
                 
-                # PERMINTAAN 5: Rekap Full Toko, hanya item Minus (RP SO NOW < 0)
+                # PERMINTAAN 5: Rekap Full Master, hanya item minus
                 if not df_m_rek.empty:
                     df_minus_master = df_m_rek[df_m_rek['RP SO NOW'] < 0].copy()
                     m_cols = list(df_minus_master.columns)
-                    
                     df_m_mrg = df_minus_master.drop(columns=['KETERANGAN']) if 'KETERANGAN' in df_minus_master.columns else df_minus_master.copy()
                     final_rekap = df_m_mrg.merge(combined_in, on=['KDTOKO', 'PRDCD'], how='left').fillna("")
                     final_rekap = final_rekap[m_cols if 'KETERANGAN' in m_cols else m_cols + ['KETERANGAN']]
                     
                     out_rek = io.BytesIO()
                     with pd.ExcelWriter(out_rek) as w: final_rekap.to_excel(w, index=False)
-                    st.success(f"Rekap {target_v} siap diunduh.")
-                    st.download_button("📥 Klik Download File Excel", out_rek.getvalue(), f"Full_Rekap_Minus_{target_v}.xlsx")
-                else: st.error("Data Master tidak ditemukan.")
+                    st.download_button("📥 Klik Download", out_rek.getvalue(), f"Full_Rekap_Minus_{target_v}.xlsx")
 
     with tab_mas:
+        # CEK MASTER AKTIF
         master_status = False
         try:
-            cloudinary.api.resource(MASTER_PATH, resource_type="raw")
-            master_status = True
+            cloudinary.api.resource(MASTER_PATH, resource_type="raw"); master_status = True
         except: pass
 
-        f_up = st.file_uploader("Upload Master Baru (.xlsx)", type=["xlsx"])
+        f_up = st.file_uploader("Upload Master Tambahan", type=["xlsx"])
         if f_up and st.button("🚀 Update Master"):
-            with st.spinner("Sinkronisasi Master..."):
-                old_df_m, _ = get_master_data()
-                new_df_m = pd.read_excel(f_up)
-                new_df_m.columns = [str(c).strip().upper() for c in new_df_m.columns]
-                
-                # Incremental Update (Sinkronisasi PLU/PRDCD)
-                final_m = pd.concat([old_df_m, new_df_m], ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PRDCD'], keep='last')
-                if 'KETERANGAN' in final_m.columns: final_m['KETERANGAN'] = ""
-                
-                buf_m = io.BytesIO()
-                with pd.ExcelWriter(buf_m) as w: final_m.to_excel(w, index=False)
-                cloudinary.uploader.upload(buf_m.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
-                
-                # Keterangan Sukses Dinamis
-                if master_status: st.success("✅ Master sukses diperbarui")
-                else: st.success("✅ Master baru berhasil diupload")
-                st.cache_data.clear(); time.sleep(1); st.rerun()
+            old_df, _ = get_master_data()
+            new_df = pd.read_excel(f_up)
+            new_df.columns = [str(c).strip().upper() for c in new_df.columns]
+            final_master = pd.concat([old_df, new_df], ignore_index=True).drop_duplicates(subset=['KDTOKO', 'PRDCD'], keep='last')
+            if 'KETERANGAN' in final_master.columns: final_master['KETERANGAN'] = ""
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf) as w: final_master.to_excel(w, index=False)
+            cloudinary.uploader.upload(buf.getvalue(), resource_type="raw", public_id=MASTER_PATH, overwrite=True, invalidate=True)
+            
+            # Pesan Dinamis
+            if master_status: st.success("✅ Master sukses diperbarui")
+            else: st.success("✅ Master baru berhasil diupload")
+            st.cache_data.clear(); time.sleep(1); st.rerun()
+
+        st.divider()
+        # RESTORASI FITUR HAPUS MASTER AKTIF (SKRIP INTI)
+        st.subheader("🗑️ Hapus Master Aktif")
+        with st.container(border=True):
+            opsi_h_input = st.checkbox("Ikut hapus seluruh hasil input user berjalan?", value=False)
+            konfirmasi_del = st.text_input("Ketik 'HAPUS' untuk menghapus Master Aktif:")
+            if st.button("🔥 Eksekusi Hapus Master", type="primary"):
+                if konfirmasi_del == "HAPUS":
+                    cloudinary.uploader.destroy(MASTER_PATH, resource_type="raw")
+                    if opsi_h_input:
+                        res_all = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
+                        pids_all = [f['public_id'] for f in res_all.get('resources', [])]
+                        if pids_all: cloudinary.api.delete_resources(pids_all, resource_type="raw")
+                    st.cache_data.clear(); st.success("Master Terhapus!"); time.sleep(1); st.rerun()
 
     with tab_usr:
         st.subheader("Reset Password User")
-        nik_tgt = st.text_input("Ketik NIK User:"); db_adm = get_user_db_safe()
-        if nik_tgt and db_adm and nik_tgt in db_adm:
-            st.success(f"Akun {nik_tgt} aktif.")
+        nik_man = st.text_input("Ketik NIK User:"); db_u = get_user_db_safe()
+        if nik_man and db_u and nik_man in db_u:
             p_new = st.text_input("Password Baru:", type="password")
-            if st.button("Update Password"):
-                db_adm[nik_tgt] = p_new
-                if update_user_db(db_adm): st.success("Berhasil diubah!"); time.sleep(1); st.rerun()
+            if st.button("Update Sekarang"):
+                db_u[nik_man] = p_new
+                if update_user_db(db_u): st.success("Update Berhasil!"); st.rerun()
 
     with tab_res:
-        # PERMINTAAN 4: Toggle Maintenance Mode Terotomasi
-        st.subheader("🛠️ Panel Maintenance")
-        current_mt = get_maintenance_status()
-        if current_mt:
-            st.warning("Status: SEDANG MAINTENANCE (Terkunci)")
-            if st.button("🔴 MATIKAN MAINTENANCE SEKARANG"):
+        # PERMINTAAN 4: Toggle Maintenance Mode
+        st.subheader("🛠️ Maintenance Mode")
+        is_mt_now = get_maintenance_status()
+        if is_mt_now:
+            st.warning("Web Terkunci (Maintenance)")
+            if st.button("🔴 MATIKAN MAINTENANCE"):
                 if set_maintenance_status(False): st.success("Web Dibuka!"); time.sleep(1); st.rerun()
         else:
-            st.success("Status: ONLINE (Terbuka)")
-            if st.button("🟢 AKTIFKAN MAINTENANCE SEKARANG"):
+            st.success("Web Terbuka (Online)")
+            if st.button("🟢 AKTIFKAN MAINTENANCE"):
                 if set_maintenance_status(True): st.success("Web Dikunci!"); time.sleep(1); st.rerun()
         
         st.divider()
-        st.subheader("🔥 Pembersihan Total")
-        if st.button("HAPUS SELURUH HASIL INPUT USER", type="primary"):
-            res_del = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
-            pids = [f['public_id'] for f in res_del.get('resources', [])]
-            if pids: cloudinary.api.delete_resources(pids, resource_type="raw")
-            st.cache_data.clear(); st.success("Hasil input dibersihkan!"); time.sleep(1); st.rerun()
+        # RESTORASI HAPUS HASIL INPUT (SKRIP INTI)
+        st.subheader("🔥 Reset Hasil Input")
+        if st.button("HAPUS SEMUA HASIL INPUT TANPA HAPUS MASTER", type="primary"):
+            res_res = cloudinary.api.resources(resource_type="raw", type="upload", prefix="pareto_nkl/hasil/")
+            pids_res = [f['public_id'] for f in res_res.get('resources', [])]
+            if pids_res: cloudinary.api.delete_resources(pids_res, resource_type="raw")
+            st.cache_data.clear(); st.success("Dibersihkan!"); time.sleep(1); st.rerun()
 
     if st.button("Keluar Admin"): 
-        st.cache_data.clear()
-        st.session_state.page = "HOME"
-        st.rerun()
+        st.cache_data.clear(); st.session_state.page = "HOME"; st.rerun()
 
 # =================================================================
 # 5. USER INPUT (NK/NL, REFRESH, ANIMASI & KOLOM BARU)
@@ -383,18 +403,16 @@ elif st.session_state.page == "USER_INPUT":
         
         v_kd, v_as = str(df_sel['KDTOKO'].iloc[0]), str(df_sel['AS'].iloc[0])
         
-        # Header dengan Tombol Refresh (Skrip Inti)
-        ch1, ch2, ch3 = st.columns([2, 2, 1])
-        ch1.metric("KDTOKO:", v_kd)
-        ch2.metric("AS:", v_as)
-        with ch3:
-            if st.button("🔄 Refresh Data"): 
-                clear_all_caches(); st.rerun()
+        # RESTORASI HEADER DENGAN REFRESH (SKRIP INTI)
+        c1_u, c2_u, c3_u = st.columns([2, 2, 1])
+        c1_u.metric("KDTOKO:", v_kd)
+        c2_u.metric("AS:", v_as)
+        with c3_u:
+            if st.button("🔄 Refresh Data"): st.cache_data.clear(); st.rerun()
 
         # Sinkronisasi Real-time (Skrip Inti)
         data_final = df_sel.copy()
         data_final['PRDCD'] = data_final['PRDCD'].astype(str).str.strip()
-        
         existing_res = get_existing_result(v_kd, v_m_in)
         if existing_res is not None:
             if validate_file_exists_in_cloudinary(v_kd, v_m_in):
@@ -402,69 +420,41 @@ elif st.session_state.page == "USER_INPUT":
                 cloud_dat['PRDCD'] = cloud_dat['PRDCD'].astype(str).str.strip()
                 if 'KETERANGAN' in data_final.columns: data_final = data_final.drop(columns=['KETERANGAN'])
                 data_final = data_final.merge(cloud_dat.drop_duplicates(subset=['PRDCD']), on='PRDCD', how='left')
-                st.success(f"✅ Sinkronisasi Isian Lama v{v_m_in} Berhasil.")
-        else:
-            data_final['KETERANGAN'] = ""
-
-        # Formatting Angka Ribuan & Tipe Data (PERMINTAAN 1)
+        
+        # Format Kolom Numerik Ribuan (PERMINTAAN 1)
         data_final['KETERANGAN'] = data_final['KETERANGAN'].fillna("").astype(str).replace(['nan','NaN','None'], '')
         so_cols = ['QTY SO LALU', 'RP SO LALU', 'QTY SO NOW', 'RP SO NOW']
         for c in so_cols: 
             data_final[c] = pd.to_numeric(data_final[c], errors='coerce').fillna(0)
 
-        # PEMISAHAN NK & NL BERDASARKAN RP SO NOW
+        # PEMISAHAN NK & NL (Permintaan 1)
         df_nk = data_final[data_final['RP SO NOW'] < 0].copy()
         df_nl = data_final[data_final['RP SO NOW'] >= 0].copy()
 
-        # Config Tampilan (Format Ribuan Indonesia)
-        conf_view = {
-            "PRDCD": st.column_config.TextColumn("PRDCD"),
-            "DESC": st.column_config.TextColumn("DESC"),
-            "QTY SO LALU": st.column_config.NumberColumn("QTY LALU", format="%,d"),
-            "RP SO LALU": st.column_config.NumberColumn("RP LALU", format="%,d"),
-            "QTY SO NOW": st.column_config.NumberColumn("QTY NOW", format="%,d"),
-            "RP SO NOW": st.column_config.NumberColumn("RP NOW", format="%,d"),
-        }
+        conf_view = {"PRDCD": st.column_config.TextColumn("PRDCD"), "DESC": st.column_config.TextColumn("DESC"),
+                     "QTY SO LALU": st.column_config.NumberColumn("QTY LALU", format="%,d"), "RP SO LALU": st.column_config.NumberColumn("RP LALU", format="%,d"),
+                     "QTY SO NOW": st.column_config.NumberColumn("QTY NOW", format="%,d"), "RP SO NOW": st.column_config.NumberColumn("RP NOW", format="%,d")}
 
-        # 1. Tabel Item NK (Minus) - BISA EDIT
         st.markdown('<div class="nk-label"><b>🟥 20 item minus (NK) terbesar harap isi keterangan!</b></div>', unsafe_allow_html=True)
-        ed_nk = st.data_editor(
-            df_nk[['PRDCD', 'DESC', 'QTY SO LALU', 'RP SO LALU', 'QTY SO NOW', 'RP SO NOW', 'KETERANGAN']], 
-            column_config={**conf_view, "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True)}, 
-            hide_index=True, use_container_width=True, key=f"ed_nk_{v_kd}"
-        )
+        ed_nk = st.data_editor(df_nk[['PRDCD', 'DESC', 'QTY SO LALU', 'RP SO LALU', 'QTY SO NOW', 'RP SO NOW', 'KETERANGAN']], 
+                               column_config={**conf_view, "KETERANGAN": st.column_config.TextColumn("KETERANGAN (Wajib Isi)", required=True)}, 
+                               hide_index=True, use_container_width=True, key=f"ed_nk_{v_kd}")
 
-        # 2. Tabel Item NL (Plus) - PENAMPIL SAJA
         st.markdown('<div class="nl-label"><b>🟩 20 item plus terbesar (NL) hanya sebagai penampil saja!</b></div>', unsafe_allow_html=True)
-        st.dataframe(df_nl[['PRDCD', 'DESC', 'QTY SO LALU', 'RP SO LALU', 'QTY SO NOW', 'RP SO NOW']], 
-                     column_config=conf_view, hide_index=True, use_container_width=True)
+        st.dataframe(df_nl[['PRDCD', 'DESC', 'QTY SO LALU', 'RP SO LALU', 'QTY SO NOW', 'RP SO NOW']], column_config=conf_view, hide_index=True, use_container_width=True)
 
         if st.button("🚀 Simpan Hasil Input", type="primary", use_container_width=True):
             if ed_nk['KETERANGAN'].apply(lambda x: str(x).strip() == "").any():
-                st.error("⚠️ Mohon isi seluruh kolom keterangan pada tabel item minus (NK)!")
+                st.error("⚠️ Mohon isi seluruh kolom keterangan NK!")
             else:
-                with st.spinner("Menyimpan isian..."):
-                    df_nk['KETERANGAN'] = ed_nk['KETERANGAN'].values
-                    df_nl['KETERANGAN'] = "ini item nl!" # Otomasi Keterangan NL
-                    
-                    combined_final = pd.concat([df_nk, df_nl], ignore_index=True)
-                    orig_master_cols = [c for c in df_m_in.columns if c != 'KETERANGAN']
-                    
-                    buf_s = io.BytesIO()
-                    with pd.ExcelWriter(buf_s) as w: 
-                        combined_final[orig_master_cols + ['KETERANGAN']].to_excel(w, index=False)
-                    
-                    p_save = f"pareto_nkl/hasil/Hasil_{v_kd}_v{v_m_in}.xlsx"
-                    cloudinary.uploader.upload(buf_s.getvalue(), resource_type="raw", public_id=p_save, overwrite=True, invalidate=True)
-                    
-                    # ANIMASI BALLOONS & PESAN SUKSES 2 DETIK (PERMINTAAN 3)
-                    st.balloons()
-                    st.success("✅ Input keterangan sukses!")
-                    time.sleep(2)
-                    clear_all_caches()
-                    st.rerun()
+                df_nk['KETERANGAN'] = ed_nk['KETERANGAN'].values
+                df_nl['KETERANGAN'] = "ini item nl!"
+                save_df = pd.concat([df_nk, df_nl], ignore_index=True)
+                orig_m_cols = [c for c in df_m_in.columns if c != 'KETERANGAN']
+                buf_s = io.BytesIO()
+                with pd.ExcelWriter(buf_s) as w: save_df[orig_m_cols + ['KETERANGAN']].to_excel(w, index=False)
+                cloudinary.uploader.upload(buf_s.getvalue(), resource_type="raw", public_id=f"pareto_nkl/hasil/Hasil_{v_kd}_v{v_m_in}.xlsx", overwrite=True, invalidate=True)
+                # ANIMASI & PESAN SUKSES 2 DETIK (PERMINTAAN 3)
+                st.balloons(); st.success("✅ Input keterangan sukses!"); time.sleep(2); st.cache_data.clear(); st.rerun()
 
-    if st.button("Log Out"): 
-        clear_all_caches()
-        st.session_state.page = "HOME"
-        st.rerun()
+    if st.button("Log Out"): st.cache_data.clear(); st.session_state.page = "HOME"; st.rerun()
