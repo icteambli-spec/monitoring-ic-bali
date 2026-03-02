@@ -29,7 +29,7 @@ USER_DB = "pareto_nkl/config/users_pareto_nkl.json"
 MASTER_PATH = "pareto_nkl/master_pareto_nkl.xlsx"
 MT_CONFIG = "pareto_nkl/config/maintenance_config.json"
 # PERMINTAAN 4: Link gambar maintenance (Silakan ganti link ini)
-MAINTENANCE_IMAGE = "https://res.cloudinary.com/dydpottpm/image/upload/v1769698444/What_is_Fraud__Definition_and_Examples_1_yck2yg.jpg"
+MAINTENANCE_IMAGE = "https://res.cloudinary.com/dydpottpm/image/upload/v1772461285/Bugs_Bunny_In_Prison_GIF_-_Prison_Jail_Bugs_Bunny_Prison_-_Discover_Share_GIFs_pq0pez.gif"
 
 # =================================================================
 # 2. FUNGSI CORE, MAINTENANCE & PENGUATAN LOGIN
